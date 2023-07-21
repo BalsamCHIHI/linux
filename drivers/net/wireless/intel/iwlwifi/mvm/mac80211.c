@@ -2240,7 +2240,7 @@ int iwl_mvm_set_sta_pkt_ext(struct iwl_mvm *mvm,
  * is enabled or not
  */
 bool iwl_mvm_set_fw_mu_edca_params(struct iwl_mvm *mvm,
-				   struct iwl_mvm_vif *mvmvif,
+				   const struct iwl_mvm_vif_link_info *link_info,
 				   struct iwl_he_backoff_conf *trig_based_txf)
 {
 	int i;
@@ -2248,11 +2248,11 @@ bool iwl_mvm_set_fw_mu_edca_params(struct iwl_mvm *mvm,
 	bool mu_edca_enabled = true;
 
 	for (i = 0; i < IEEE80211_NUM_ACS; i++) {
-		struct ieee80211_he_mu_edca_param_ac_rec *mu_edca =
-			&mvmvif->deflink.queue_params[i].mu_edca_param_rec;
+		const struct ieee80211_he_mu_edca_param_ac_rec *mu_edca =
+			&link_info->queue_params[i].mu_edca_param_rec;
 		u8 ac = iwl_mvm_mac80211_ac_to_ucode_ac(i);
 
-		if (!mvmvif->deflink.queue_params[i].mu_edca) {
+		if (!link_info->queue_params[i].mu_edca) {
 			mu_edca_enabled = false;
 			break;
 		}
@@ -2398,7 +2398,7 @@ static void iwl_mvm_cfg_he_sta(struct iwl_mvm *mvm,
 
 	rcu_read_unlock();
 
-	if (iwl_mvm_set_fw_mu_edca_params(mvm, mvmvif,
+	if (iwl_mvm_set_fw_mu_edca_params(mvm, &mvmvif->deflink,
 					  &sta_ctxt_cmd.trig_based_txf[0]))
 		flags |= STA_CTXT_HE_MU_EDCA_CW;
 
@@ -3836,6 +3836,7 @@ int iwl_mvm_mac_sta_state_common(struct ieee80211_hw *hw,
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 	struct iwl_mvm_sta *mvm_sta = iwl_mvm_sta_from_mac80211(sta);
+	struct ieee80211_link_sta *link_sta;
 	unsigned int link_id;
 	int ret;
 
@@ -3877,7 +3878,7 @@ int iwl_mvm_mac_sta_state_common(struct ieee80211_hw *hw,
 	mutex_lock(&mvm->mutex);
 
 	/* this would be a mac80211 bug ... but don't crash */
-	for_each_mvm_vif_valid_link(mvmvif, link_id) {
+	for_each_sta_active_link(vif, sta, link_sta, link_id) {
 		if (WARN_ON_ONCE(!mvmvif->link[link_id]->phy_ctxt)) {
 			mutex_unlock(&mvm->mutex);
 			return test_bit(IWL_MVM_STATUS_HW_RESTART_REQUESTED,
@@ -5652,6 +5653,30 @@ void iwl_mvm_mac_flush(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		iwl_trans_wait_tx_queues_empty(mvm->trans, msk);
 }
 
+void iwl_mvm_mac_flush_sta(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+			   struct ieee80211_sta *sta)
+{
+	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
+	int i;
+
+	mutex_lock(&mvm->mutex);
+	for (i = 0; i < mvm->fw->ucode_capa.num_stations; i++) {
+		struct iwl_mvm_sta *mvmsta;
+		struct ieee80211_sta *tmp;
+
+		tmp = rcu_dereference_protected(mvm->fw_id_to_mac_id[i],
+						lockdep_is_held(&mvm->mutex));
+		if (tmp != sta)
+			continue;
+
+		mvmsta = iwl_mvm_sta_from_mac80211(sta);
+
+		if (iwl_mvm_flush_sta(mvm, mvmsta, false))
+			IWL_ERR(mvm, "flush request fail\n");
+	}
+	mutex_unlock(&mvm->mutex);
+}
+
 int iwl_mvm_mac_get_survey(struct ieee80211_hw *hw, int idx,
 			   struct survey_info *survey)
 {
@@ -6142,10 +6167,6 @@ static bool iwl_mvm_mac_can_aggregate(struct ieee80211_hw *hw,
 {
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
 
-	if (iwl_mvm_has_new_tx_csum(mvm))
-		return iwl_mvm_tx_csum_bz(mvm, head, true) ==
-		       iwl_mvm_tx_csum_bz(mvm, skb, true);
-
 	/* For now don't aggregate IPv6 in AMSDU */
 	if (skb->protocol != htons(ETH_P_IP))
 		return false;
@@ -6208,6 +6229,7 @@ const struct ieee80211_ops iwl_mvm_hw_ops = {
 	.mgd_complete_tx = iwl_mvm_mac_mgd_complete_tx,
 	.mgd_protect_tdls_discover = iwl_mvm_mac_mgd_protect_tdls_discover,
 	.flush = iwl_mvm_mac_flush,
+	.flush_sta = iwl_mvm_mac_flush_sta,
 	.sched_scan_start = iwl_mvm_mac_sched_scan_start,
 	.sched_scan_stop = iwl_mvm_mac_sched_scan_stop,
 	.set_key = iwl_mvm_mac_set_key,

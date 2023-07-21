@@ -457,6 +457,7 @@ void tcp_init_sock(struct sock *sk)
 
 	WRITE_ONCE(sk->sk_sndbuf, READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_wmem[1]));
 	WRITE_ONCE(sk->sk_rcvbuf, READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_rmem[1]));
+	tcp_scaling_ratio_init(sk);
 
 	set_bit(SOCK_SUPPORT_ZC, &sk->sk_socket->flags);
 	sk_sockets_allocated_inc(sk);
@@ -599,7 +600,7 @@ __poll_t tcp_poll(struct file *file, struct socket *sock, poll_table *wait)
 }
 EXPORT_SYMBOL(tcp_poll);
 
-int tcp_ioctl(struct sock *sk, int cmd, unsigned long arg)
+int tcp_ioctl(struct sock *sk, int cmd, int *karg)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	int answ;
@@ -641,7 +642,8 @@ int tcp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 		return -ENOIOCTLCMD;
 	}
 
-	return put_user(answ, (int __user *)arg);
+	*karg = answ;
+	return 0;
 }
 EXPORT_SYMBOL(tcp_ioctl);
 
@@ -838,7 +840,7 @@ ssize_t tcp_splice_read(struct socket *sock, loff_t *ppos,
 		tss.len -= ret;
 		spliced += ret;
 
-		if (!timeo)
+		if (!tss.len || !timeo)
 			break;
 		release_sock(sk);
 		lock_sock(sk);
@@ -858,12 +860,12 @@ ssize_t tcp_splice_read(struct socket *sock, loff_t *ppos,
 }
 EXPORT_SYMBOL(tcp_splice_read);
 
-struct sk_buff *tcp_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp,
+struct sk_buff *tcp_stream_alloc_skb(struct sock *sk, gfp_t gfp,
 				     bool force_schedule)
 {
 	struct sk_buff *skb;
 
-	skb = alloc_skb_fclone(size + MAX_TCP_HEADER, gfp);
+	skb = alloc_skb_fclone(MAX_TCP_HEADER, gfp);
 	if (likely(skb)) {
 		bool mem_scheduled;
 
@@ -922,11 +924,10 @@ int tcp_send_mss(struct sock *sk, int *size_goal, int flags)
 	return mss_now;
 }
 
-/* In some cases, both sendpage() and sendmsg() could have added
- * an skb to the write queue, but failed adding payload on it.
- * We need to remove it to consume less memory, but more
- * importantly be able to generate EPOLLOUT for Edge Trigger epoll()
- * users.
+/* In some cases, both sendmsg() could have added an skb to the write queue,
+ * but failed adding payload on it.  We need to remove it to consume less
+ * memory, but more importantly be able to generate EPOLLOUT for Edge Trigger
+ * epoll() users.
  */
 void tcp_remove_empty_skb(struct sock *sk)
 {
@@ -957,7 +958,7 @@ static int tcp_downgrade_zcopy_pure(struct sock *sk, struct sk_buff *skb)
 }
 
 
-static int tcp_wmem_schedule(struct sock *sk, int copy)
+int tcp_wmem_schedule(struct sock *sk, int copy)
 {
 	int left;
 
@@ -973,40 +974,6 @@ static int tcp_wmem_schedule(struct sock *sk, int copy)
 		sk_forced_mem_schedule(sk, min(left, copy));
 	return min(copy, sk->sk_forward_alloc);
 }
-
-int tcp_sendpage_locked(struct sock *sk, struct page *page, int offset,
-			size_t size, int flags)
-{
-	struct bio_vec bvec;
-	struct msghdr msg = { .msg_flags = flags | MSG_SPLICE_PAGES, };
-
-	if (!(sk->sk_route_caps & NETIF_F_SG))
-		return sock_no_sendpage_locked(sk, page, offset, size, flags);
-
-	tcp_rate_check_app_limited(sk);  /* is sending application-limited? */
-
-	bvec_set_page(&bvec, page, size, offset);
-	iov_iter_bvec(&msg.msg_iter, ITER_SOURCE, &bvec, 1, size);
-
-	if (flags & MSG_SENDPAGE_NOTLAST)
-		msg.msg_flags |= MSG_MORE;
-
-	return tcp_sendmsg_locked(sk, &msg, size);
-}
-EXPORT_SYMBOL_GPL(tcp_sendpage_locked);
-
-int tcp_sendpage(struct sock *sk, struct page *page, int offset,
-		 size_t size, int flags)
-{
-	int ret;
-
-	lock_sock(sk);
-	ret = tcp_sendpage_locked(sk, page, offset, size, flags);
-	release_sock(sk);
-
-	return ret;
-}
-EXPORT_SYMBOL(tcp_sendpage);
 
 void tcp_free_fastopen_req(struct tcp_sock *tp)
 {
@@ -1178,7 +1145,7 @@ new_segment:
 					goto restart;
 			}
 			first_skb = tcp_rtx_and_write_queues_empty(sk);
-			skb = tcp_stream_alloc_skb(sk, 0, sk->sk_allocation,
+			skb = tcp_stream_alloc_skb(sk, sk->sk_allocation,
 						   first_skb);
 			if (!skb)
 				goto wait_for_space;
@@ -1734,7 +1701,7 @@ EXPORT_SYMBOL(tcp_peek_len);
 /* Make sure sk_rcvbuf is big enough to satisfy SO_RCVLOWAT hint */
 int tcp_set_rcvlowat(struct sock *sk, int val)
 {
-	int cap;
+	int space, cap;
 
 	if (sk->sk_userlocks & SOCK_RCVBUF_LOCK)
 		cap = sk->sk_rcvbuf >> 1;
@@ -1749,10 +1716,10 @@ int tcp_set_rcvlowat(struct sock *sk, int val)
 	if (sk->sk_userlocks & SOCK_RCVBUF_LOCK)
 		return 0;
 
-	val <<= 1;
-	if (val > sk->sk_rcvbuf) {
-		WRITE_ONCE(sk->sk_rcvbuf, val);
-		tcp_sk(sk)->window_clamp = tcp_win_from_space(sk, val);
+	space = tcp_space_from_win(sk, val);
+	if (space > sk->sk_rcvbuf) {
+		WRITE_ONCE(sk->sk_rcvbuf, space);
+		tcp_sk(sk)->window_clamp = val;
 	}
 	return 0;
 }
@@ -1773,7 +1740,7 @@ void tcp_update_recv_tstamps(struct sk_buff *skb,
 }
 
 #ifdef CONFIG_MMU
-static const struct vm_operations_struct tcp_vm_ops = {
+const struct vm_operations_struct tcp_vm_ops = {
 };
 
 int tcp_mmap(struct file *file, struct socket *sock,
@@ -2072,6 +2039,34 @@ static void tcp_zc_finalize_rx_tstamp(struct sock *sk,
 	}
 }
 
+static struct vm_area_struct *find_tcp_vma(struct mm_struct *mm,
+					   unsigned long address,
+					   bool *mmap_locked)
+{
+	struct vm_area_struct *vma = NULL;
+
+#ifdef CONFIG_PER_VMA_LOCK
+	vma = lock_vma_under_rcu(mm, address);
+#endif
+	if (vma) {
+		if (!vma_is_tcp(vma)) {
+			vma_end_read(vma);
+			return NULL;
+		}
+		*mmap_locked = false;
+		return vma;
+	}
+
+	mmap_read_lock(mm);
+	vma = vma_lookup(mm, address);
+	if (!vma || !vma_is_tcp(vma)) {
+		mmap_read_unlock(mm);
+		return NULL;
+	}
+	*mmap_locked = true;
+	return vma;
+}
+
 #define TCP_ZEROCOPY_PAGE_BATCH_SIZE 32
 static int tcp_zerocopy_receive(struct sock *sk,
 				struct tcp_zerocopy_receive *zc,
@@ -2089,6 +2084,7 @@ static int tcp_zerocopy_receive(struct sock *sk,
 	u32 seq = tp->copied_seq;
 	u32 total_bytes_to_map;
 	int inq = tcp_inq(sk);
+	bool mmap_locked;
 	int ret;
 
 	zc->copybuf_len = 0;
@@ -2113,13 +2109,10 @@ static int tcp_zerocopy_receive(struct sock *sk,
 		return 0;
 	}
 
-	mmap_read_lock(current->mm);
-
-	vma = vma_lookup(current->mm, address);
-	if (!vma || vma->vm_ops != &tcp_vm_ops) {
-		mmap_read_unlock(current->mm);
+	vma = find_tcp_vma(current->mm, address, &mmap_locked);
+	if (!vma)
 		return -EINVAL;
-	}
+
 	vma_len = min_t(unsigned long, zc->length, vma->vm_end - address);
 	avail_len = min_t(u32, vma_len, inq);
 	total_bytes_to_map = avail_len & ~(PAGE_SIZE - 1);
@@ -2193,7 +2186,10 @@ static int tcp_zerocopy_receive(struct sock *sk,
 						   zc, total_bytes_to_map);
 	}
 out:
-	mmap_read_unlock(current->mm);
+	if (mmap_locked)
+		mmap_read_unlock(current->mm);
+	else
+		vma_end_read(vma);
 	/* Try to copy straggler data. */
 	if (!ret)
 		copylen = tcp_zc_handle_leftover(zc, sk, skb, &seq, copybuf_len, tss);
