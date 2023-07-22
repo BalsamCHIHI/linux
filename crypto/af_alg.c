@@ -482,7 +482,6 @@ static const struct proto_ops alg_proto_ops = {
 	.listen		=	sock_no_listen,
 	.shutdown	=	sock_no_shutdown,
 	.mmap		=	sock_no_mmap,
-	.sendpage	=	sock_no_sendpage,
 	.sendmsg	=	sock_no_sendmsg,
 	.recvmsg	=	sock_no_recvmsg,
 
@@ -993,7 +992,7 @@ int af_alg_sendmsg(struct socket *sock, struct msghdr *msg, size_t size,
 		ssize_t plen;
 
 		/* use the existing memory in an allocated page */
-		if (ctx->merge) {
+		if (ctx->merge && !(msg->msg_flags & MSG_SPLICE_PAGES)) {
 			sgl = list_entry(ctx->tsgl_list.prev,
 					 struct af_alg_tsgl, list);
 			sg = sgl->sg + sgl->cur - 1;
@@ -1043,7 +1042,7 @@ int af_alg_sendmsg(struct socket *sock, struct msghdr *msg, size_t size,
 			};
 
 			plen = extract_iter_to_sg(&msg->msg_iter, len, &sgtable,
-						  MAX_SGL_ENTS, 0);
+						  MAX_SGL_ENTS - sgl->cur, 0);
 			if (plen < 0) {
 				err = plen;
 				goto unlock;
@@ -1055,6 +1054,7 @@ int af_alg_sendmsg(struct socket *sock, struct msghdr *msg, size_t size,
 			ctx->used += plen;
 			copied += plen;
 			size -= plen;
+			ctx->merge = 0;
 		} else {
 			do {
 				struct page *pg;
@@ -1086,12 +1086,12 @@ int af_alg_sendmsg(struct socket *sock, struct msghdr *msg, size_t size,
 				size -= plen;
 				sgl->cur++;
 			} while (len && sgl->cur < MAX_SGL_ENTS);
+
+			ctx->merge = plen & (PAGE_SIZE - 1);
 		}
 
 		if (!size)
 			sg_mark_end(sg + sgl->cur - 1);
-
-		ctx->merge = plen & (PAGE_SIZE - 1);
 	}
 
 	err = 0;
@@ -1105,33 +1105,6 @@ unlock:
 	return copied ?: err;
 }
 EXPORT_SYMBOL_GPL(af_alg_sendmsg);
-
-/**
- * af_alg_sendpage - sendpage system call handler
- * @sock: socket of connection to user space to write to
- * @page: data to send
- * @offset: offset into page to begin sending
- * @size: length of data
- * @flags: message send/receive flags
- *
- * This is a generic implementation of sendpage to fill ctx->tsgl_list.
- */
-ssize_t af_alg_sendpage(struct socket *sock, struct page *page,
-			int offset, size_t size, int flags)
-{
-	struct bio_vec bvec;
-	struct msghdr msg = {
-		.msg_flags = flags | MSG_SPLICE_PAGES,
-	};
-
-	if (flags & MSG_SENDPAGE_NOTLAST)
-		msg.msg_flags |= MSG_MORE;
-
-	bvec_set_page(&bvec, page, size, offset);
-	iov_iter_bvec(&msg.msg_iter, ITER_SOURCE, &bvec, 1, size);
-	return sock_sendmsg(sock, &msg);
-}
-EXPORT_SYMBOL_GPL(af_alg_sendpage);
 
 /**
  * af_alg_free_resources - release resources required for crypto request

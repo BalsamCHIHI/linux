@@ -2466,6 +2466,7 @@ struct cfg80211_scan_info {
  * @short_ssid_valid: @short_ssid is valid and can be used
  * @psc_no_listen: when set, and the channel is a PSC channel, no need to wait
  *       20 TUs before starting to send probe requests.
+ * @psd_20: The AP's 20 MHz PSD value.
  */
 struct cfg80211_scan_6ghz_params {
 	u32 short_ssid;
@@ -2474,6 +2475,7 @@ struct cfg80211_scan_6ghz_params {
 	bool unsolicited_probe;
 	bool short_ssid_valid;
 	bool psc_no_listen;
+	s8 psd_20;
 };
 
 /**
@@ -2720,6 +2722,7 @@ enum cfg80211_signal_type {
  *	the BSS that requested the scan in which the beacon/probe was received.
  * @chains: bitmask for filled values in @chain_signal.
  * @chain_signal: per-chain signal strength of last received BSS in dBm.
+ * @drv_data: Data to be passed through to @inform_bss
  */
 struct cfg80211_inform_bss {
 	struct ieee80211_channel *chan;
@@ -2730,6 +2733,8 @@ struct cfg80211_inform_bss {
 	u8 parent_bssid[ETH_ALEN] __aligned(2);
 	u8 chains;
 	s8 chain_signal[IEEE80211_MAX_CHAINS];
+
+	void *drv_data;
 };
 
 /**
@@ -4101,6 +4106,13 @@ struct mgmt_frame_regs {
  *
  * @change_bss: Modify parameters for a given BSS.
  *
+ * @inform_bss: Called by cfg80211 while being informed about new BSS data
+ *	for every BSS found within the reported data or frame. This is called
+ *	from within the cfg8011 inform_bss handlers while holding the bss_lock.
+ *	The data parameter is passed through from drv_data inside
+ *	struct cfg80211_inform_bss.
+ *	The new IE data for the BSS is explicitly passed.
+ *
  * @set_txq_params: Set TX queue parameters
  *
  * @libertas_set_mesh_channel: Only for backward compatibility for libertas,
@@ -4488,6 +4500,9 @@ struct cfg80211_ops {
 	int	(*change_bss)(struct wiphy *wiphy, struct net_device *dev,
 			      struct bss_parameters *params);
 
+	void	(*inform_bss)(struct wiphy *wiphy, struct cfg80211_bss *bss,
+			      const struct cfg80211_bss_ies *ies, void *data);
+
 	int	(*set_txq_params)(struct wiphy *wiphy, struct net_device *dev,
 				  struct ieee80211_txq_params *params);
 
@@ -4607,9 +4622,10 @@ struct cfg80211_ops {
 				  struct cfg80211_gtk_rekey_data *data);
 
 	int	(*tdls_mgmt)(struct wiphy *wiphy, struct net_device *dev,
-			     const u8 *peer, u8 action_code,  u8 dialog_token,
-			     u16 status_code, u32 peer_capability,
-			     bool initiator, const u8 *buf, size_t len);
+			     const u8 *peer, int link_id,
+			     u8 action_code, u8 dialog_token, u16 status_code,
+			     u32 peer_capability, bool initiator,
+			     const u8 *buf, size_t len);
 	int	(*tdls_oper)(struct wiphy *wiphy, struct net_device *dev,
 			     const u8 *peer, enum nl80211_tdls_operation oper);
 
@@ -6661,6 +6677,28 @@ cfg80211_find_vendor_ie(unsigned int oui, int oui_type,
 {
 	return (const void *)cfg80211_find_vendor_elem(oui, oui_type, ies, len);
 }
+
+/**
+ * cfg80211_defragment_element - Defrag the given element data into a buffer
+ *
+ * @elem: the element to defragment
+ * @ies: elements where @elem is contained
+ * @ieslen: length of @ies
+ * @data: buffer to store element data
+ * @data_len: length of @data
+ * @frag_id: the element ID of fragments
+ *
+ * Return: length of @data, or -EINVAL on error
+ *
+ * Copy out all data from an element that may be fragmented into @data, while
+ * skipping all headers.
+ *
+ * The function uses memmove() internally. It is acceptable to defragment an
+ * element in-place.
+ */
+ssize_t cfg80211_defragment_element(const struct element *elem, const u8 *ies,
+				    size_t ieslen, u8 *data, size_t data_len,
+				    u8 frag_id);
 
 /**
  * cfg80211_send_layer2_update - send layer 2 update frame
@@ -9168,5 +9206,18 @@ static inline int cfg80211_color_change_notify(struct net_device *dev)
  */
 bool cfg80211_valid_disable_subchannel_bitmap(u16 *bitmap,
 					      const struct cfg80211_chan_def *chandef);
+
+/**
+ * cfg80211_links_removed - Notify about removed STA MLD setup links.
+ * @dev: network device.
+ * @link_mask: BIT mask of removed STA MLD setup link IDs.
+ *
+ * Inform cfg80211 and the userspace about removed STA MLD setup links due to
+ * AP MLD removing the corresponding affiliated APs with Multi-Link
+ * reconfiguration. Note that it's not valid to remove all links, in this
+ * case disconnect instead.
+ * Also note that the wdev mutex must be held.
+ */
+void cfg80211_links_removed(struct net_device *dev, u16 link_mask);
 
 #endif /* __NET_CFG80211_H */

@@ -60,22 +60,27 @@ u32 iwl_mvm_get_sta_ampdu_dens(struct ieee80211_link_sta *link_sta,
 	if (WARN_ON(!link_sta))
 		return 0;
 
-	if (link_sta->ht_cap.ht_supported)
-		mpdu_dens = link_sta->ht_cap.ampdu_density;
+	/* Note that we always use only legacy & highest supported PPDUs, so
+	 * of Draft P802.11be D.30 Table 10-12a--Fields used for calculating
+	 * the maximum A-MPDU size of various PPDU types in different bands,
+	 * we only need to worry about the highest supported PPDU type here.
+	 */
 
-	if (link_conf->chandef.chan->band ==
-	    NL80211_BAND_6GHZ) {
+	if (link_sta->ht_cap.ht_supported) {
+		agg_size = link_sta->ht_cap.ampdu_factor;
+		mpdu_dens = link_sta->ht_cap.ampdu_density;
+	}
+
+	if (link_conf->chandef.chan->band == NL80211_BAND_6GHZ) {
+		/* overwrite HT values on 6 GHz */
 		mpdu_dens = le16_get_bits(link_sta->he_6ghz_capa.capa,
 					  IEEE80211_HE_6GHZ_CAP_MIN_MPDU_START);
 		agg_size = le16_get_bits(link_sta->he_6ghz_capa.capa,
 					 IEEE80211_HE_6GHZ_CAP_MAX_AMPDU_LEN_EXP);
 	} else if (link_sta->vht_cap.vht_supported) {
-		agg_size = link_sta->vht_cap.cap &
-			IEEE80211_VHT_CAP_MAX_A_MPDU_LENGTH_EXPONENT_MASK;
-		agg_size >>=
-			IEEE80211_VHT_CAP_MAX_A_MPDU_LENGTH_EXPONENT_SHIFT;
-	} else if (link_sta->ht_cap.ht_supported) {
-		agg_size = link_sta->ht_cap.ampdu_factor;
+		/* if VHT supported overwrite HT value */
+		agg_size = u32_get_bits(link_sta->vht_cap.cap,
+					IEEE80211_VHT_CAP_MAX_A_MPDU_LENGTH_EXPONENT_MASK);
 	}
 
 	/* D6.0 10.12.2 A-MPDU length limit rules
@@ -91,10 +96,13 @@ u32 iwl_mvm_get_sta_ampdu_dens(struct ieee80211_link_sta *link_sta,
 			u8_get_bits(link_sta->he_cap.he_cap_elem.mac_cap_info[3],
 				    IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_MASK);
 
+	if (link_sta->eht_cap.has_eht)
+		agg_size += u8_get_bits(link_sta->eht_cap.eht_cap_elem.mac_cap_info[1],
+					IEEE80211_EHT_MAC_CAP1_MAX_AMPDU_LEN_MASK);
+
 	/* Limit to max A-MPDU supported by FW */
-	if (agg_size > (STA_FLG_MAX_AGG_SIZE_4M >> STA_FLG_MAX_AGG_SIZE_SHIFT))
-		agg_size = (STA_FLG_MAX_AGG_SIZE_4M >>
-			    STA_FLG_MAX_AGG_SIZE_SHIFT);
+	agg_size = min_t(u32, agg_size,
+			 STA_FLG_MAX_AGG_SIZE_4M >> STA_FLG_MAX_AGG_SIZE_SHIFT);
 
 	*_agg_size = agg_size;
 	return mpdu_dens;
@@ -2877,7 +2885,7 @@ int iwl_mvm_sta_rx_agg(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 	}
 
 	if (iwl_mvm_has_new_rx_api(mvm) && start) {
-		u16 reorder_buf_size = buf_size * sizeof(baid_data->entries[0]);
+		u32 reorder_buf_size = buf_size * sizeof(baid_data->entries[0]);
 
 		/* sparse doesn't like the __align() so don't check */
 #ifndef __CHECKER__

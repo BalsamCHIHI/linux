@@ -20,6 +20,7 @@
 #include <linux/spinlock.h>
 #include <linux/rcupdate.h>
 #include <linux/time.h>
+#include <net/gso.h>
 #include <net/netlink.h>
 #include <net/pkt_sched.h>
 #include <net/pkt_cls.h>
@@ -798,6 +799,9 @@ static struct sk_buff *taprio_dequeue_tc_priority(struct Qdisc *sch,
 						      entry, gate_mask);
 
 			taprio_next_tc_txq(dev, tc, &q->cur_txq[tc]);
+
+			if (q->cur_txq[tc] >= dev->num_tx_queues)
+				q->cur_txq[tc] = first_txq;
 
 			if (skb)
 				return skb;
@@ -2457,9 +2461,9 @@ static int taprio_dump_class_stats(struct Qdisc *sch, unsigned long cl,
 {
 	struct netdev_queue *dev_queue = taprio_queue_get(sch, cl);
 	struct tc_taprio_qopt_offload offload = {
-		.cmd = TAPRIO_CMD_TC_STATS,
-		.tc_stats = {
-			.tc = cl - 1,
+		.cmd = TAPRIO_CMD_QUEUE_STATS,
+		.queue_stats = {
+			.queue = cl - 1,
 		},
 	};
 	struct Qdisc *child;
@@ -2469,7 +2473,7 @@ static int taprio_dump_class_stats(struct Qdisc *sch, unsigned long cl,
 	    qdisc_qstats_copy(d, child) < 0)
 		return -1;
 
-	return taprio_dump_xstats(sch, d, &offload, &offload.tc_stats.stats);
+	return taprio_dump_xstats(sch, d, &offload, &offload.queue_stats.stats);
 }
 
 static void taprio_walk(struct Qdisc *sch, struct qdisc_walker *arg)
