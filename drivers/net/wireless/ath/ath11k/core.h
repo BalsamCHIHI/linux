@@ -123,7 +123,7 @@ struct ath11k_skb_rxcb {
 	bool is_last_msdu;
 	bool is_continuation;
 	bool is_mcbc;
-	bool is_eapol;
+	bool skip_decap;
 	struct hal_rx_desc *rx_desc;
 	u8 err_rel_src;
 	u8 err_code;
