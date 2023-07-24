@@ -2110,7 +2110,7 @@ ieee80211_rx_h_decrypt(struct ieee80211_rx_data *rx)
 	/* either the frame has been decrypted or will be dropped */
 	status->flag |= RX_FLAG_DECRYPTED;
 
-	if (unlikely(ieee80211_is_beacon(fc) && result == RX_DROP_UNUSABLE &&
+	if (unlikely(ieee80211_is_beacon(fc) && (result & RX_DROP_UNUSABLE) &&
 		     rx->sdata->dev))
 		cfg80211_rx_unprot_mlme_mgmt(rx->sdata->dev,
 					     skb->data, skb->len);
@@ -2405,9 +2405,9 @@ static int ieee80211_drop_unencrypted(struct ieee80211_rx_data *rx, __le16 fc)
 
 static int ieee80211_drop_unencrypted_mgmt(struct ieee80211_rx_data *rx)
 {
-	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)rx->skb->data;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
-	__le16 fc = hdr->frame_control;
+	struct ieee80211_mgmt *mgmt = (void *)rx->skb->data;
+	__le16 fc = mgmt->frame_control;
 
 	/*
 	 * Pass through unencrypted frames if the hardware has
@@ -2416,15 +2416,27 @@ static int ieee80211_drop_unencrypted_mgmt(struct ieee80211_rx_data *rx)
 	if (status->flag & RX_FLAG_DECRYPTED)
 		return 0;
 
+	/* drop unicast protected dual (that wasn't protected) */
+	if (ieee80211_is_action(fc) &&
+	    mgmt->u.action.category == WLAN_CATEGORY_PROTECTED_DUAL_OF_ACTION)
+		return -EACCES;
+
 	if (rx->sta && test_sta_flag(rx->sta, WLAN_STA_MFP)) {
 		if (unlikely(!ieee80211_has_protected(fc) &&
-			     ieee80211_is_unicast_robust_mgmt_frame(rx->skb) &&
-			     rx->key)) {
+			     ieee80211_is_unicast_robust_mgmt_frame(rx->skb))) {
 			if (ieee80211_is_deauth(fc) ||
-			    ieee80211_is_disassoc(fc))
+			    ieee80211_is_disassoc(fc)) {
+				/*
+				 * Permit unprotected deauth/disassoc frames
+				 * during 4-way-HS (key is installed after HS).
+				 */
+				if (!rx->key)
+					return 0;
+
 				cfg80211_rx_unprot_mlme_mgmt(rx->sdata->dev,
 							     rx->skb->data,
 							     rx->skb->len);
+			}
 			return -EACCES;
 		}
 		/* BIP does not use Protected field, so need to check MMIE */
@@ -2450,6 +2462,12 @@ static int ieee80211_drop_unencrypted_mgmt(struct ieee80211_rx_data *rx)
 		 */
 		if (unlikely(ieee80211_is_action(fc) && !rx->key &&
 			     ieee80211_is_robust_mgmt_frame(rx->skb)))
+			return -EACCES;
+
+		/* drop unicast public action frames when using MPF */
+		if (is_unicast_ether_addr(mgmt->da) &&
+		    ieee80211_is_public_action((void *)rx->skb->data,
+					       rx->skb->len))
 			return -EACCES;
 	}
 
@@ -3356,6 +3374,11 @@ ieee80211_rx_h_mgmt_check(struct ieee80211_rx_data *rx)
 	if (!ieee80211_is_mgmt(mgmt->frame_control))
 		return RX_DROP_MONITOR;
 
+	/* drop too small action frames */
+	if (ieee80211_is_action(mgmt->frame_control) &&
+	    rx->skb->len < IEEE80211_MIN_ACTION_SIZE)
+		return RX_DROP_UNUSABLE;
+
 	if (rx->sdata->vif.type == NL80211_IFTYPE_AP &&
 	    ieee80211_is_beacon(mgmt->frame_control) &&
 	    !(rx->flags & IEEE80211_RX_BEACON_REPORTED)) {
@@ -3444,10 +3467,6 @@ ieee80211_rx_h_action(struct ieee80211_rx_data *rx)
 
 	if (!ieee80211_is_action(mgmt->frame_control))
 		return RX_CONTINUE;
-
-	/* drop too small frames */
-	if (len < IEEE80211_MIN_ACTION_SIZE)
-		return RX_DROP_UNUSABLE;
 
 	if (!rx->sta && mgmt->u.action.category != WLAN_CATEGORY_PUBLIC &&
 	    mgmt->u.action.category != WLAN_CATEGORY_SELF_PROTECTED &&

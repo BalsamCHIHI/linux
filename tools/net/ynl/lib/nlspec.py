@@ -154,6 +154,9 @@ class SpecAttr(SpecElement):
         is_multi      bool, attr may repeat multiple times
         struct_name   string, name of struct definition
         sub_type      string, name of sub type
+        len           integer, optional byte length of binary types
+        display_hint  string, hint to help choose format specifier
+                      when displaying the value
     """
     def __init__(self, family, attr_set, yaml, value):
         super().__init__(family, yaml)
@@ -164,6 +167,8 @@ class SpecAttr(SpecElement):
         self.struct_name = yaml.get('struct')
         self.sub_type = yaml.get('sub-type')
         self.byte_order = yaml.get('byte-order')
+        self.len = yaml.get('len')
+        self.display_hint = yaml.get('display-hint')
 
 
 class SpecAttrSet(SpecElement):
@@ -229,12 +234,17 @@ class SpecStructMember(SpecElement):
         type        string, type of the member attribute
         byte_order  string or None for native byte order
         enum        string, name of the enum definition
+        len         integer, optional byte length of binary types
+        display_hint  string, hint to help choose format specifier
+                      when displaying the value
     """
     def __init__(self, family, yaml):
         super().__init__(family, yaml)
         self.type = yaml['type']
         self.byte_order = yaml.get('byte-order')
         self.enum = yaml.get('enum')
+        self.len = yaml.get('len')
+        self.display_hint = yaml.get('display-hint')
 
 
 class SpecStruct(SpecElement):
@@ -334,7 +344,7 @@ class SpecFamily(SpecElement):
         consts     dict of all constants/enums
         fixed_header  string, optional name of family default fixed header struct
     """
-    def __init__(self, spec_path, schema_path=None):
+    def __init__(self, spec_path, schema_path=None, exclude_ops=None):
         with open(spec_path, "r") as stream:
             prefix = '# SPDX-License-Identifier: '
             first = stream.readline().strip()
@@ -348,6 +358,8 @@ class SpecFamily(SpecElement):
         self._resolution_list = []
 
         super().__init__(self, spec)
+
+        self._exclude_ops = exclude_ops if exclude_ops else []
 
         self.proto = self.yaml.get('protocol', 'genetlink')
         self.msg_id_model = self.yaml['operations'].get('enum-model', 'unified')
@@ -449,7 +461,13 @@ class SpecFamily(SpecElement):
                 req_val = None
             if rsp_val == rsp_val_next:
                 rsp_val = None
-            op = self.new_operation(elem, req_val, rsp_val)
+
+            skip = False
+            for exclude in self._exclude_ops:
+                skip |= bool(exclude.match(elem['name']))
+            if not skip:
+                op = self.new_operation(elem, req_val, rsp_val)
+
             req_val = req_val_next
             rsp_val = rsp_val_next
 

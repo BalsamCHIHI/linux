@@ -1601,7 +1601,9 @@ static void iwl_mvm_rx_common(struct iwl_mvm *mvm,
 		if (rx_h->cmd_id != WIDE_ID(pkt->hdr.group_id, pkt->hdr.cmd))
 			continue;
 
-		if (unlikely(pkt_len < rx_h->min_size))
+		if (IWL_FW_CHECK(mvm, pkt_len < rx_h->min_size,
+				 "unexpected notification 0x%04x size %d, need %d\n",
+				 rx_h->cmd_id, pkt_len, rx_h->min_size))
 			return;
 
 		if (rx_h->context == RX_HANDLER_SYNC) {
@@ -1740,8 +1742,11 @@ static void iwl_mvm_queue_state_change(struct iwl_op_mode *op_mode,
 		else
 			set_bit(IWL_MVM_TXQ_STATE_STOP_FULL, &mvmtxq->state);
 
-		if (start && mvmsta->sta_state != IEEE80211_STA_NOTEXIST)
+		if (start && mvmsta->sta_state != IEEE80211_STA_NOTEXIST) {
+			local_bh_disable();
 			iwl_mvm_mac_itxq_xmit(mvm->hw, txq);
+			local_bh_enable();
+		}
 	}
 
 out:

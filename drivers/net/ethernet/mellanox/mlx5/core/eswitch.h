@@ -289,6 +289,7 @@ struct mlx5_host_work {
 struct mlx5_esw_functions {
 	struct mlx5_nb		nb;
 	u16			num_vfs;
+	u16			num_ec_vfs;
 };
 
 enum {
@@ -303,6 +304,8 @@ enum {
 	MLX5_ESW_FDB_CREATED = BIT(0),
 };
 
+struct dentry;
+
 struct mlx5_eswitch {
 	struct mlx5_core_dev    *dev;
 	struct mlx5_nb          nb;
@@ -311,6 +314,7 @@ struct mlx5_eswitch {
 	struct hlist_head       mc_table[MLX5_L2_ADDR_HASH_SIZE];
 	struct esw_mc_addr mc_promisc;
 	/* end of legacy */
+	struct dentry *debugfs_root;
 	struct workqueue_struct *work_queue;
 	struct xarray vports;
 	u32 flags;
@@ -349,7 +353,7 @@ struct mlx5_eswitch {
 		u32             large_group_num;
 	}  params;
 	struct blocking_notifier_head n_head;
-	bool paired[MLX5_MAX_PORTS];
+	struct xarray paired;
 };
 
 void esw_offloads_disable(struct mlx5_eswitch *esw);
@@ -653,6 +657,19 @@ void mlx5e_tc_clean_fdb_peer_flows(struct mlx5_eswitch *esw);
 
 #define mlx5_esw_for_each_host_func_vport(esw, index, vport, last)	\
 	mlx5_esw_for_each_vport_marked(esw, index, vport, last, MLX5_ESW_VPT_HOST_FN)
+
+/* This macro should only be used if EC SRIOV is enabled.
+ *
+ * Because there were no more marks available on the xarray this uses a
+ * for_each_range approach. The range is only valid when EC SRIOV is enabled
+ */
+#define mlx5_esw_for_each_ec_vf_vport(esw, index, vport, last)		\
+	xa_for_each_range(&((esw)->vports),				\
+			  index,					\
+			  vport,					\
+			  MLX5_CAP_GEN_2((esw->dev), ec_vf_vport_base),	\
+			  MLX5_CAP_GEN_2((esw->dev), ec_vf_vport_base) +\
+			  (last) - 1)
 
 struct mlx5_eswitch *mlx5_devlink_eswitch_get(struct devlink *devlink);
 struct mlx5_vport *__must_check

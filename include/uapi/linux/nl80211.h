@@ -1309,6 +1309,11 @@
  *	The number of peers that HW timestamping can be enabled for concurrently
  *	is indicated by %NL80211_ATTR_MAX_HW_TIMESTAMP_PEERS.
  *
+ * @NL80211_CMD_LINKS_REMOVED: Notify userspace about the removal of STA MLD
+ *	setup links due to AP MLD removing the corresponding affiliated APs with
+ *	Multi-Link reconfiguration. %NL80211_ATTR_MLO_LINKS is used to provide
+ *	information about the removed STA MLD setup links.
+ *
  * @NL80211_CMD_MAX: highest used command number
  * @__NL80211_CMD_AFTER_LAST: internal use
  */
@@ -1561,6 +1566,8 @@ enum nl80211_commands {
 	NL80211_CMD_REMOVE_LINK_STA,
 
 	NL80211_CMD_SET_HW_TIMESTAMP,
+
+	NL80211_CMD_LINKS_REMOVED,
 
 	/* add new commands above here */
 
@@ -4443,6 +4450,7 @@ enum nl80211_sched_scan_match_attr {
  * @NL80211_RRF_NO_160MHZ: 160MHz operation not allowed
  * @NL80211_RRF_NO_HE: HE operation not allowed
  * @NL80211_RRF_NO_320MHZ: 320MHz operation not allowed
+ * @NL80211_RRF_NO_EHT: EHT operation not allowed
  */
 enum nl80211_reg_rule_flags {
 	NL80211_RRF_NO_OFDM		= 1<<0,
@@ -4462,6 +4470,7 @@ enum nl80211_reg_rule_flags {
 	NL80211_RRF_NO_160MHZ		= 1<<16,
 	NL80211_RRF_NO_HE		= 1<<17,
 	NL80211_RRF_NO_320MHZ		= 1<<18,
+	NL80211_RRF_NO_EHT		= 1<<19,
 };
 
 #define NL80211_RRF_PASSIVE_SCAN	NL80211_RRF_NO_IR

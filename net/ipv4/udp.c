@@ -103,6 +103,7 @@
 #include <net/ip_tunnels.h>
 #include <net/route.h>
 #include <net/checksum.h>
+#include <net/gso.h>
 #include <net/xfrm.h>
 #include <trace/events/udp.h>
 #include <linux/static_key.h>
@@ -1339,20 +1340,6 @@ void udp_splice_eof(struct socket *sock)
 }
 EXPORT_SYMBOL_GPL(udp_splice_eof);
 
-int udp_sendpage(struct sock *sk, struct page *page, int offset,
-		 size_t size, int flags)
-{
-	struct bio_vec bvec;
-	struct msghdr msg = { .msg_flags = flags | MSG_SPLICE_PAGES };
-
-	if (flags & MSG_SENDPAGE_NOTLAST)
-		msg.msg_flags |= MSG_MORE;
-
-	bvec_set_page(&bvec, page, size, offset);
-	iov_iter_bvec(&msg.msg_iter, ITER_SOURCE, &bvec, 1, size);
-	return udp_sendmsg(sk, &msg, size);
-}
-
 #define UDP_SKB_IS_STATELESS 0x80000000
 
 /* all head states (dst, sk, nf conntrack) except skb extensions are
@@ -1566,7 +1553,7 @@ int __udp_enqueue_schedule_skb(struct sock *sk, struct sk_buff *skb)
 	spin_unlock(&list->lock);
 
 	if (!sock_flag(sk, SOCK_DEAD))
-		sk->sk_data_ready(sk);
+		INDIRECT_CALL_1(sk->sk_data_ready, sock_def_readable, sk);
 
 	busylock_release(busy);
 	return 0;
@@ -1691,21 +1678,19 @@ static int first_packet_length(struct sock *sk)
  *	IOCTL requests applicable to the UDP protocol
  */
 
-int udp_ioctl(struct sock *sk, int cmd, unsigned long arg)
+int udp_ioctl(struct sock *sk, int cmd, int *karg)
 {
 	switch (cmd) {
 	case SIOCOUTQ:
 	{
-		int amount = sk_wmem_alloc_get(sk);
-
-		return put_user(amount, (int __user *)arg);
+		*karg = sk_wmem_alloc_get(sk);
+		return 0;
 	}
 
 	case SIOCINQ:
 	{
-		int amount = max_t(int, 0, first_packet_length(sk));
-
-		return put_user(amount, (int __user *)arg);
+		*karg = max_t(int, 0, first_packet_length(sk));
+		return 0;
 	}
 
 	default:
@@ -2934,7 +2919,6 @@ struct proto udp_prot = {
 	.sendmsg		= udp_sendmsg,
 	.recvmsg		= udp_recvmsg,
 	.splice_eof		= udp_splice_eof,
-	.sendpage		= udp_sendpage,
 	.release_cb		= ip4_datagram_release_cb,
 	.hash			= udp_lib_hash,
 	.unhash			= udp_lib_unhash,
