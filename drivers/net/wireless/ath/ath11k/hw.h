@@ -187,7 +187,8 @@ struct ath11k_hw_params {
 	bool supports_shadow_regs;
 	bool idle_ps;
 	bool supports_sta_ps;
-	bool cold_boot_calib;
+	bool coldboot_cal_mm;
+	bool coldboot_cal_ftm;
 	bool cbcal_restart_fw;
 	int fw_mem_mode;
 	u32 num_vdevs;
@@ -319,6 +320,8 @@ static inline int ath11k_hw_mac_id_to_srng_id(struct ath11k_hw_params *hw,
 
 	return 0;
 }
+
+bool ath11k_hw_supports_6g_cc_ext(struct ath11k *ar);
 
 struct ath11k_fw_ie {
 	__le32 id;
