@@ -186,6 +186,7 @@ struct ath12k_hw_params {
 	const struct hal_ops *hal_ops;
 
 	u64 qmi_cnss_feature_bitmap;
+	u32 rddm_size;
 };
 
 struct ath12k_hw_ops {
