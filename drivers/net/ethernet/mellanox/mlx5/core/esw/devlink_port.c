@@ -60,7 +60,7 @@ static struct devlink_port *mlx5_esw_dl_port_alloc(struct mlx5_eswitch *esw, u16
 	}  else if (mlx5_core_is_ec_vf_vport(esw->dev, vport_num)) {
 		memcpy(dl_port->attrs.switch_id.id, ppid.id, ppid.id_len);
 		dl_port->attrs.switch_id.id_len = ppid.id_len;
-		devlink_port_attrs_pci_vf_set(dl_port, controller_num, pfnum,
+		devlink_port_attrs_pci_vf_set(dl_port, 0, pfnum,
 					      vport_num - 1, false);
 	}
 	return dl_port;
@@ -132,10 +132,8 @@ void mlx5_esw_offloads_devlink_port_unregister(struct mlx5_eswitch *esw, u16 vpo
 	if (IS_ERR(vport))
 		return;
 
-	if (vport->dl_port->devlink_rate) {
-		mlx5_esw_qos_vport_update_group(esw, vport, NULL, NULL);
-		devl_rate_leaf_destroy(vport->dl_port);
-	}
+	mlx5_esw_qos_vport_update_group(esw, vport, NULL, NULL);
+	devl_rate_leaf_destroy(vport->dl_port);
 
 	devl_port_unregister(vport->dl_port);
 	mlx5_esw_dl_port_free(vport->dl_port);
@@ -211,10 +209,8 @@ void mlx5_esw_devlink_sf_port_unregister(struct mlx5_eswitch *esw, u16 vport_num
 	if (IS_ERR(vport))
 		return;
 
-	if (vport->dl_port->devlink_rate) {
-		mlx5_esw_qos_vport_update_group(esw, vport, NULL, NULL);
-		devl_rate_leaf_destroy(vport->dl_port);
-	}
+	mlx5_esw_qos_vport_update_group(esw, vport, NULL, NULL);
+	devl_rate_leaf_destroy(vport->dl_port);
 
 	devl_port_unregister(vport->dl_port);
 	vport->dl_port = NULL;
