@@ -640,7 +640,7 @@ bool bcmasp_netfilt_check_dup(struct bcmasp_intf *intf,
  * If no more open filters return NULL
  */
 struct bcmasp_net_filter *bcmasp_netfilt_get_init(struct bcmasp_intf *intf,
-						  int loc, bool wake_filter,
+						  u32 loc, bool wake_filter,
 						  bool init)
 {
 	struct bcmasp_net_filter *nfilter = NULL;
@@ -1232,7 +1232,7 @@ static int bcmasp_probe(struct platform_device *pdev)
 
 	priv->irq = platform_get_irq(pdev, 0);
 	if (priv->irq <= 0)
-		return dev_err_probe(dev, -EINVAL, "invalid interrupt\n");
+		return -EINVAL;
 
 	priv->clk = devm_clk_get_optional_enabled(dev, "sw_asp");
 	if (IS_ERR(priv->clk))

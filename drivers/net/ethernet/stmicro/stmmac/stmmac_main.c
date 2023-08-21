@@ -39,6 +39,7 @@
 #include <linux/phylink.h>
 #include <linux/udp.h>
 #include <linux/bpf_trace.h>
+#include <net/page_pool/helpers.h>
 #include <net/pkt_cls.h>
 #include <net/xdp_sock_drv.h>
 #include "stmmac_ptp.h"
@@ -909,6 +910,9 @@ static int stmmac_init_ptp(struct stmmac_priv *priv)
 	priv->hwts_tx_en = 0;
 	priv->hwts_rx_en = 0;
 
+	if (priv->plat->flags & STMMAC_FLAG_HWTSTAMP_CORRECT_LATENCY)
+		stmmac_hwtstamp_correct_latency(priv, priv);
+
 	return 0;
 }
 
@@ -1060,7 +1064,7 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	priv->speed = speed;
 
 	if (priv->plat->fix_mac_speed)
-		priv->plat->fix_mac_speed(priv->plat->bsp_priv, speed);
+		priv->plat->fix_mac_speed(priv->plat->bsp_priv, speed, mode);
 
 	if (!duplex)
 		ctrl &= ~priv->hw->link.duplex;
@@ -1094,6 +1098,9 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 
 	if (priv->dma_cap.fpesel)
 		stmmac_fpe_link_state_handle(priv, true);
+
+	if (priv->plat->flags & STMMAC_FLAG_HWTSTAMP_CORRECT_LATENCY)
+		stmmac_hwtstamp_correct_latency(priv, priv);
 }
 
 static const struct phylink_mac_ops stmmac_phylink_mac_ops = {
@@ -6230,6 +6237,22 @@ DEFINE_SHOW_ATTRIBUTE(stmmac_rings_status);
 
 static int stmmac_dma_cap_show(struct seq_file *seq, void *v)
 {
+	static const char * const dwxgmac_timestamp_source[] = {
+		"None",
+		"Internal",
+		"External",
+		"Both",
+	};
+	static const char * const dwxgmac_safety_feature_desc[] = {
+		"No",
+		"All Safety Features with ECC and Parity",
+		"All Safety Features without ECC or Parity",
+		"All Safety Features with Parity Only",
+		"ECC Only",
+		"UNDEFINED",
+		"UNDEFINED",
+		"UNDEFINED",
+	};
 	struct net_device *dev = seq->private;
 	struct stmmac_priv *priv = netdev_priv(dev);
 
@@ -6248,10 +6271,16 @@ static int stmmac_dma_cap_show(struct seq_file *seq, void *v)
 		   (priv->dma_cap.mbps_1000) ? "Y" : "N");
 	seq_printf(seq, "\tHalf duplex: %s\n",
 		   (priv->dma_cap.half_duplex) ? "Y" : "N");
-	seq_printf(seq, "\tHash Filter: %s\n",
-		   (priv->dma_cap.hash_filter) ? "Y" : "N");
-	seq_printf(seq, "\tMultiple MAC address registers: %s\n",
-		   (priv->dma_cap.multi_addr) ? "Y" : "N");
+	if (priv->plat->has_xgmac) {
+		seq_printf(seq,
+			   "\tNumber of Additional MAC address registers: %d\n",
+			   priv->dma_cap.multi_addr);
+	} else {
+		seq_printf(seq, "\tHash Filter: %s\n",
+			   (priv->dma_cap.hash_filter) ? "Y" : "N");
+		seq_printf(seq, "\tMultiple MAC address registers: %s\n",
+			   (priv->dma_cap.multi_addr) ? "Y" : "N");
+	}
 	seq_printf(seq, "\tPCS (TBI/SGMII/RTBI PHY interfaces): %s\n",
 		   (priv->dma_cap.pcs) ? "Y" : "N");
 	seq_printf(seq, "\tSMA (MDIO) Interface: %s\n",
@@ -6266,12 +6295,16 @@ static int stmmac_dma_cap_show(struct seq_file *seq, void *v)
 		   (priv->dma_cap.time_stamp) ? "Y" : "N");
 	seq_printf(seq, "\tIEEE 1588-2008 Advanced Time Stamp: %s\n",
 		   (priv->dma_cap.atime_stamp) ? "Y" : "N");
+	if (priv->plat->has_xgmac)
+		seq_printf(seq, "\tTimestamp System Time Source: %s\n",
+			   dwxgmac_timestamp_source[priv->dma_cap.tssrc]);
 	seq_printf(seq, "\t802.3az - Energy-Efficient Ethernet (EEE): %s\n",
 		   (priv->dma_cap.eee) ? "Y" : "N");
 	seq_printf(seq, "\tAV features: %s\n", (priv->dma_cap.av) ? "Y" : "N");
 	seq_printf(seq, "\tChecksum Offload in TX: %s\n",
 		   (priv->dma_cap.tx_coe) ? "Y" : "N");
-	if (priv->synopsys_id >= DWMAC_CORE_4_00) {
+	if (priv->synopsys_id >= DWMAC_CORE_4_00 ||
+	    priv->plat->has_xgmac) {
 		seq_printf(seq, "\tIP Checksum Offload in RX: %s\n",
 			   (priv->dma_cap.rx_coe) ? "Y" : "N");
 	} else {
@@ -6279,9 +6312,9 @@ static int stmmac_dma_cap_show(struct seq_file *seq, void *v)
 			   (priv->dma_cap.rx_coe_type1) ? "Y" : "N");
 		seq_printf(seq, "\tIP Checksum Offload (type2) in RX: %s\n",
 			   (priv->dma_cap.rx_coe_type2) ? "Y" : "N");
+		seq_printf(seq, "\tRXFIFO > 2048bytes: %s\n",
+			   (priv->dma_cap.rxfifo_over_2048) ? "Y" : "N");
 	}
-	seq_printf(seq, "\tRXFIFO > 2048bytes: %s\n",
-		   (priv->dma_cap.rxfifo_over_2048) ? "Y" : "N");
 	seq_printf(seq, "\tNumber of Additional RX channel: %d\n",
 		   priv->dma_cap.number_rx_channel);
 	seq_printf(seq, "\tNumber of Additional TX channel: %d\n",
@@ -6294,12 +6327,13 @@ static int stmmac_dma_cap_show(struct seq_file *seq, void *v)
 		   (priv->dma_cap.enh_desc) ? "Y" : "N");
 	seq_printf(seq, "\tTX Fifo Size: %d\n", priv->dma_cap.tx_fifo_size);
 	seq_printf(seq, "\tRX Fifo Size: %d\n", priv->dma_cap.rx_fifo_size);
-	seq_printf(seq, "\tHash Table Size: %d\n", priv->dma_cap.hash_tb_sz);
+	seq_printf(seq, "\tHash Table Size: %lu\n", priv->dma_cap.hash_tb_sz ?
+		   (BIT(priv->dma_cap.hash_tb_sz) << 5) : 0);
 	seq_printf(seq, "\tTSO: %s\n", priv->dma_cap.tsoen ? "Y" : "N");
 	seq_printf(seq, "\tNumber of PPS Outputs: %d\n",
 		   priv->dma_cap.pps_out_num);
 	seq_printf(seq, "\tSafety Features: %s\n",
-		   priv->dma_cap.asp ? "Y" : "N");
+		   dwxgmac_safety_feature_desc[priv->dma_cap.asp]);
 	seq_printf(seq, "\tFlexible RX Parser: %s\n",
 		   priv->dma_cap.frpsel ? "Y" : "N");
 	seq_printf(seq, "\tEnhanced Addressing: %d\n",
@@ -6324,6 +6358,53 @@ static int stmmac_dma_cap_show(struct seq_file *seq, void *v)
 		   priv->dma_cap.fpesel ? "Y" : "N");
 	seq_printf(seq, "\tTime-Based Scheduling (TBS): %s\n",
 		   priv->dma_cap.tbssel ? "Y" : "N");
+	seq_printf(seq, "\tNumber of DMA Channels Enabled for TBS: %d\n",
+		   priv->dma_cap.tbs_ch_num);
+	seq_printf(seq, "\tPer-Stream Filtering: %s\n",
+		   priv->dma_cap.sgfsel ? "Y" : "N");
+	seq_printf(seq, "\tTX Timestamp FIFO Depth: %lu\n",
+		   BIT(priv->dma_cap.ttsfd) >> 1);
+	seq_printf(seq, "\tNumber of Traffic Classes: %d\n",
+		   priv->dma_cap.numtc);
+	seq_printf(seq, "\tDCB Feature: %s\n",
+		   priv->dma_cap.dcben ? "Y" : "N");
+	seq_printf(seq, "\tIEEE 1588 High Word Register: %s\n",
+		   priv->dma_cap.advthword ? "Y" : "N");
+	seq_printf(seq, "\tPTP Offload: %s\n",
+		   priv->dma_cap.ptoen ? "Y" : "N");
+	seq_printf(seq, "\tOne-Step Timestamping: %s\n",
+		   priv->dma_cap.osten ? "Y" : "N");
+	seq_printf(seq, "\tPriority-Based Flow Control: %s\n",
+		   priv->dma_cap.pfcen ? "Y" : "N");
+	seq_printf(seq, "\tNumber of Flexible RX Parser Instructions: %lu\n",
+		   BIT(priv->dma_cap.frpes) << 6);
+	seq_printf(seq, "\tNumber of Flexible RX Parser Parsable Bytes: %lu\n",
+		   BIT(priv->dma_cap.frpbs) << 6);
+	seq_printf(seq, "\tParallel Instruction Processor Engines: %d\n",
+		   priv->dma_cap.frppipe_num);
+	seq_printf(seq, "\tNumber of Extended VLAN Tag Filters: %lu\n",
+		   priv->dma_cap.nrvf_num ?
+		   (BIT(priv->dma_cap.nrvf_num) << 1) : 0);
+	seq_printf(seq, "\tWidth of the Time Interval Field in GCL: %d\n",
+		   priv->dma_cap.estwid ? 4 * priv->dma_cap.estwid + 12 : 0);
+	seq_printf(seq, "\tDepth of GCL: %lu\n",
+		   priv->dma_cap.estdep ? (BIT(priv->dma_cap.estdep) << 5) : 0);
+	seq_printf(seq, "\tQueue/Channel-Based VLAN Tag Insertion on TX: %s\n",
+		   priv->dma_cap.cbtisel ? "Y" : "N");
+	seq_printf(seq, "\tNumber of Auxiliary Snapshot Inputs: %d\n",
+		   priv->dma_cap.aux_snapshot_n);
+	seq_printf(seq, "\tOne-Step Timestamping for PTP over UDP/IP: %s\n",
+		   priv->dma_cap.pou_ost_en ? "Y" : "N");
+	seq_printf(seq, "\tEnhanced DMA: %s\n",
+		   priv->dma_cap.edma ? "Y" : "N");
+	seq_printf(seq, "\tDifferent Descriptor Cache: %s\n",
+		   priv->dma_cap.ediffc ? "Y" : "N");
+	seq_printf(seq, "\tVxLAN/NVGRE: %s\n",
+		   priv->dma_cap.vxn ? "Y" : "N");
+	seq_printf(seq, "\tDebug Memory Interface: %s\n",
+		   priv->dma_cap.dbgmem ? "Y" : "N");
+	seq_printf(seq, "\tNumber of Policing Counters: %lu\n",
+		   priv->dma_cap.pcsel ? BIT(priv->dma_cap.pcsel + 3) : 0);
 	return 0;
 }
 DEFINE_SHOW_ATTRIBUTE(stmmac_dma_cap);
