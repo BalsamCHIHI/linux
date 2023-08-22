@@ -3030,6 +3030,41 @@ enum wmi_10_4_feature_mask {
 
 };
 
+/* WMI_GPIO_CONFIG_CMDID */
+enum {
+	WMI_GPIO_PULL_NONE,
+	WMI_GPIO_PULL_UP,
+	WMI_GPIO_PULL_DOWN,
+};
+
+enum {
+	WMI_GPIO_INTTYPE_DISABLE,
+	WMI_GPIO_INTTYPE_RISING_EDGE,
+	WMI_GPIO_INTTYPE_FALLING_EDGE,
+	WMI_GPIO_INTTYPE_BOTH_EDGE,
+	WMI_GPIO_INTTYPE_LEVEL_LOW,
+	WMI_GPIO_INTTYPE_LEVEL_HIGH
+};
+
+/* WMI_GPIO_CONFIG_CMDID */
+struct wmi_gpio_config_cmd {
+	__le32 gpio_num;             /* GPIO number to be setup */
+	__le32 input;                /* 0 - Output/ 1 - Input */
+	__le32 pull_type;            /* Pull type defined above */
+	__le32 intr_mode;            /* Interrupt mode defined above (Input) */
+} __packed;
+
+/* WMI_GPIO_OUTPUT_CMDID */
+struct wmi_gpio_output_cmd {
+	__le32 gpio_num;    /* GPIO number to be setup */
+	__le32 set;         /* Set the GPIO pin*/
+} __packed;
+
+/* WMI_GPIO_INPUT_EVENTID */
+struct wmi_gpio_input_event {
+	__le32 gpio_num;    /* GPIO number which changed state */
+} __packed;
+
 struct wmi_ext_resource_config_10_4_cmd {
 	/* contains enum wmi_host_platform_type */
 	__le32 host_platform_config;
@@ -3854,9 +3889,9 @@ enum wmi_pdev_param {
 	 * retransmitting frames.
 	 */
 	WMI_PDEV_PARAM_DYNAMIC_BW,
-	/* Non aggregrate/ 11g sw retry threshold.0-disable */
+	/* Non aggregate/ 11g sw retry threshold.0-disable */
 	WMI_PDEV_PARAM_NON_AGG_SW_RETRY_TH,
-	/* aggregrate sw retry threshold. 0-disable*/
+	/* aggregate sw retry threshold. 0-disable*/
 	WMI_PDEV_PARAM_AGG_SW_RETRY_TH,
 	/* Station kickout threshold (non of consecutive failures).0-disable */
 	WMI_PDEV_PARAM_STA_KICKOUT_TH,
@@ -3953,9 +3988,9 @@ enum wmi_10x_pdev_param {
 	WMI_10X_PDEV_PARAM_PROTECTION_MODE,
 	/* Dynamic bandwidth 0: disable 1: enable */
 	WMI_10X_PDEV_PARAM_DYNAMIC_BW,
-	/* Non aggregrate/ 11g sw retry threshold.0-disable */
+	/* Non aggregate/ 11g sw retry threshold.0-disable */
 	WMI_10X_PDEV_PARAM_NON_AGG_SW_RETRY_TH,
-	/* aggregrate sw retry threshold. 0-disable*/
+	/* aggregate sw retry threshold. 0-disable*/
 	WMI_10X_PDEV_PARAM_AGG_SW_RETRY_TH,
 	/* Station kickout threshold (non of consecutive failures).0-disable */
 	WMI_10X_PDEV_PARAM_STA_KICKOUT_TH,
