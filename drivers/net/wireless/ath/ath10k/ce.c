@@ -1655,16 +1655,14 @@ ath10k_ce_alloc_dest_ring_64(struct ath10k *ar, unsigned int ce_id,
  * initialization. It may be that only one side or the other is
  * initialized by software/firmware.
  */
-int ath10k_ce_init_pipe(struct ath10k *ar, unsigned int ce_id,
-			const struct ce_attr *attr)
+void ath10k_ce_init_pipe(struct ath10k *ar, unsigned int ce_id,
+			 const struct ce_attr *attr)
 {
 	if (attr->src_nentries)
 		ath10k_ce_init_src_ring(ar, ce_id, attr);
 
 	if (attr->dest_nentries)
 		ath10k_ce_init_dest_ring(ar, ce_id, attr);
-
-	return 0;
 }
 EXPORT_SYMBOL(ath10k_ce_init_pipe);
 
