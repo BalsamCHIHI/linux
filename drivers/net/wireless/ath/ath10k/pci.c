@@ -2527,16 +2527,10 @@ void ath10k_pci_free_pipes(struct ath10k *ar)
 int ath10k_pci_init_pipes(struct ath10k *ar)
 {
 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
-	int i, ret;
+	int i;
 
-	for (i = 0; i < CE_COUNT; i++) {
-		ret = ath10k_ce_init_pipe(ar, i, &ar_pci->attr[i]);
-		if (ret) {
-			ath10k_err(ar, "failed to initialize copy engine pipe %d: %d\n",
-				   i, ret);
-			return ret;
-		}
-	}
+	for (i = 0; i < CE_COUNT; i++)
+		ath10k_ce_init_pipe(ar, i, &ar_pci->attr[i]);
 
 	return 0;
 }
