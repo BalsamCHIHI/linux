@@ -1906,7 +1906,7 @@ int ath10k_ce_alloc_pipe(struct ath10k *ar, int ce_id,
 }
 EXPORT_SYMBOL(ath10k_ce_alloc_pipe);
 
-void ath10k_ce_alloc_rri(struct ath10k *ar)
+int ath10k_ce_alloc_rri(struct ath10k *ar)
 {
 	int i;
 	u32 value;
@@ -1919,7 +1919,7 @@ void ath10k_ce_alloc_rri(struct ath10k *ar)
 					   &ce->paddr_rri, GFP_KERNEL);
 
 	if (!ce->vaddr_rri)
-		return;
+		return -ENOMEM;
 
 	ath10k_ce_write32(ar, ar->hw_ce_regs->ce_rri_low,
 			  lower_32_bits(ce->paddr_rri));
@@ -1934,6 +1934,8 @@ void ath10k_ce_alloc_rri(struct ath10k *ar)
 		value |= ar->hw_ce_regs->upd->mask;
 		ath10k_ce_write32(ar, ce_base_addr + ctrl1_regs, value);
 	}
+
+	return 0;
 }
 EXPORT_SYMBOL(ath10k_ce_alloc_rri);
 

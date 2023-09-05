@@ -1074,9 +1074,16 @@ static int ath10k_snoc_hif_power_up(struct ath10k *ar,
 		goto err_hw_power_off;
 	}
 
-	ath10k_ce_alloc_rri(ar);
+	ret = ath10k_ce_alloc_rri(ar);
+	if (ret)
+		goto err_snoc_wlan_disable;
 
 	ath10k_snoc_init_pipes(ar);
+
+	return 0;
+
+err_snoc_wlan_disable:
+	ath10k_snoc_wlan_disable(ar);
 
 err_hw_power_off:
 	ath10k_hw_power_off(ar);
