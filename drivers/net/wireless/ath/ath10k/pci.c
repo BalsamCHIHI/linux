@@ -818,17 +818,17 @@ static void ath10k_pci_rx_post_pipe(struct ath10k_pci_pipe *pipe)
 	num = __ath10k_ce_rx_num_free_bufs(ce_pipe);
 	spin_unlock_bh(&ce->ce_lock);
 
-	while (num >= 0) {
+	while (num--) {
 		ret = __ath10k_pci_rx_post_buf(pipe);
-		if (ret) {
-			if (ret == -ENOSPC)
-				break;
-			ath10k_warn(ar, "failed to post pci rx buf: %d\n", ret);
-			mod_timer(&ar_pci->rx_post_retry, jiffies +
-				  ATH10K_PCI_RX_POST_RETRY_MS);
-			break;
-		}
-		num--;
+		if (unlikely(ret))
+			goto err;
+	}
+	return;
+err:
+	if (ret != -ENOSPC) {
+		ath10k_warn(ar, "failed to post pci rx buf: %d\n", ret);
+		mod_timer(&ar_pci->rx_post_retry, jiffies +
+			  msecs_to_jiffies(ATH10K_PCI_RX_POST_RETRY_MS));
 	}
 }
 
