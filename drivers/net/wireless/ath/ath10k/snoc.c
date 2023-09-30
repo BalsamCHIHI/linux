@@ -544,16 +544,18 @@ static void ath10k_snoc_rx_post_pipe(struct ath10k_snoc_pipe *pipe)
 	spin_lock_bh(&ce->ce_lock);
 	num = __ath10k_ce_rx_num_free_bufs(ce_pipe);
 	spin_unlock_bh(&ce->ce_lock);
+
 	while (num--) {
 		ret = __ath10k_snoc_rx_post_buf(pipe);
-		if (ret) {
-			if (ret == -ENOSPC)
-				break;
-			ath10k_warn(ar, "failed to post rx buf: %d\n", ret);
-			mod_timer(&ar_snoc->rx_post_retry, jiffies +
-				  ATH10K_SNOC_RX_POST_RETRY_MS);
-			break;
-		}
+		if (unlikely(ret))
+			goto err;
+	}
+	return;
+err:
+	if (ret != -ENOSPC) {
+		ath10k_warn(ar, "failed to post rx buf: %d\n", ret);
+		mod_timer(&ar_snoc->rx_post_retry, jiffies +
+			  msecs_to_jiffies(ATH10K_SNOC_RX_POST_RETRY_MS));
 	}
 }
 
