@@ -2433,9 +2433,9 @@ wmi_process_mgmt_tx_comp(struct ath10k *ar, struct mgmt_tx_compl_params *param)
 	ieee80211_tx_status_irqsafe(ar->hw, msdu);
 
 	ret = 0;
-
-out:
 	idr_remove(&wmi->mgmt_pending_tx, param->desc_id);
+	kfree(pkt_addr);
+out:
 	spin_unlock_bh(&ar->data_lock);
 	return ret;
 }
@@ -9539,6 +9539,7 @@ static int ath10k_wmi_mgmt_tx_clean_up_pending(int msdu_id, void *ptr,
 	dma_unmap_single(ar->dev, pkt_addr->paddr,
 			 msdu->len, DMA_TO_DEVICE);
 	ieee80211_free_txskb(ar->hw, msdu);
+	kfree(pkt_addr);
 
 	return 0;
 }

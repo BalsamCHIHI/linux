@@ -3038,11 +3038,18 @@ ath10k_wmi_tlv_op_cleanup_mgmt_tx_send(struct ath10k *ar,
 				       struct sk_buff *msdu)
 {
 	struct ath10k_skb_cb *cb = ATH10K_SKB_CB(msdu);
+	struct ath10k_mgmt_tx_pkt_addr *pkt_addr;
 	struct ath10k_wmi *wmi = &ar->wmi;
 
-	idr_remove(&wmi->mgmt_pending_tx, cb->msdu_id);
+	pkt_addr = idr_find(&wmi->mgmt_pending_tx, cb->msdu_id);
+	if (pkt_addr) {
+		idr_remove(&wmi->mgmt_pending_tx, cb->msdu_id);
+		kfree(pkt_addr);
+		return 0;
+	}
 
-	return 0;
+	ath10k_warn(ar, "invalid msdu_id: %d\n", cb->msdu_id);
+	return -ENOENT;
 }
 
 static int
