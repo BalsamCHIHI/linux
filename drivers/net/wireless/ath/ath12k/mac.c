@@ -7653,6 +7653,17 @@ static int __ath12k_mac_register(struct ath12k *ar)
 		goto err_unregister_hw;
 	}
 
+	if (ar->ab->hw_params->current_cc_support && ab->new_alpha2[0]) {
+		struct wmi_set_current_country_params set_current_param = {};
+
+		memcpy(&set_current_param.alpha2, ab->new_alpha2, 2);
+		memcpy(&ar->alpha2, ab->new_alpha2, 2);
+		ret = ath12k_wmi_send_set_current_country_cmd(ar, &set_current_param);
+		if (ret)
+			ath12k_warn(ar->ab,
+				    "failed set cc code for mac register: %d\n", ret);
+	}
+
 	return 0;
 
 err_unregister_hw:
