@@ -5440,10 +5440,11 @@ static int ath11k_pull_reg_chan_list_ext_update_ev(struct ath11k_base *ab,
 	}
 
 	ath11k_dbg(ab, ATH11K_DBG_WMI,
-		   "cc_ext %s dsf %d BW: min_2ghz %d max_2ghz %d min_5ghz %d max_5ghz %d",
+		   "cc_ext %s dfs %d BW: min_2ghz %d max_2ghz %d min_5ghz %d max_5ghz %d phy_bitmap 0x%x",
 		   reg_info->alpha2, reg_info->dfs_region,
 		   reg_info->min_bw_2ghz, reg_info->max_bw_2ghz,
-		   reg_info->min_bw_5ghz, reg_info->max_bw_5ghz);
+		   reg_info->min_bw_5ghz, reg_info->max_bw_5ghz,
+		   reg_info->phybitmap);
 
 	ath11k_dbg(ab, ATH11K_DBG_WMI,
 		   "num_2ghz_reg_rules %d num_5ghz_reg_rules %d",
@@ -6452,7 +6453,7 @@ static int ath11k_wmi_tlv_rssi_chain_parse(struct ath11k_base *ab,
 		goto exit;
 	}
 
-	arsta = (struct ath11k_sta *)sta->drv_priv;
+	arsta = ath11k_sta_to_arsta(sta);
 
 	BUILD_BUG_ON(ARRAY_SIZE(arsta->chain_signal) >
 		     ARRAY_SIZE(stats_rssi->rssi_avg_beacon));
@@ -6540,7 +6541,7 @@ static int ath11k_wmi_tlv_fw_stats_data_parse(struct ath11k_base *ab,
 							   arvif->bssid,
 							   NULL);
 			if (sta) {
-				arsta = (struct ath11k_sta *)sta->drv_priv;
+				arsta = ath11k_sta_to_arsta(sta);
 				arsta->rssi_beacon = src->beacon_snr;
 				ath11k_dbg(ab, ATH11K_DBG_WMI,
 					   "stats vdev id %d snr %d\n",
@@ -7467,7 +7468,7 @@ static void ath11k_wmi_event_peer_sta_ps_state_chg(struct ath11k_base *ab,
 		goto exit;
 	}
 
-	arsta = (struct ath11k_sta *)sta->drv_priv;
+	arsta = ath11k_sta_to_arsta(sta);
 
 	spin_lock_bh(&ar->data_lock);
 
