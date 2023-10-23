@@ -424,12 +424,12 @@ static void ath12k_pci_ext_grp_disable(struct ath12k_ext_irq_grp *irq_grp)
 		disable_irq_nosync(irq_grp->ab->irq_num[irq_grp->irqs[i]]);
 }
 
-static void __ath12k_pci_ext_irq_disable(struct ath12k_base *sc)
+static void __ath12k_pci_ext_irq_disable(struct ath12k_base *ab)
 {
 	int i;
 
 	for (i = 0; i < ATH12K_EXT_IRQ_GRP_NUM_MAX; i++) {
-		struct ath12k_ext_irq_grp *irq_grp = &sc->ext_irq_grp[i];
+		struct ath12k_ext_irq_grp *irq_grp = &ab->ext_irq_grp[i];
 
 		ath12k_pci_ext_grp_disable(irq_grp);
 
@@ -1342,6 +1342,12 @@ qmi_fail:
 
 	ath12k_hal_srng_deinit(ab);
 	ath12k_ce_free_pipes(ab);
+	if (ab->hw_params->acpi_guid && ab->acdata) {
+		acpi_remove_notify_handler(ACPI_HANDLE(ab->dev),
+					   ACPI_DEVICE_NOTIFY,
+					   acpi_dsm_notify);
+		kfree(ab->acdata);
+	}
 	ath12k_core_free(ab);
 }
 

@@ -24,6 +24,7 @@
 #include "hal_rx.h"
 #include "reg.h"
 #include "dbring.h"
+#include "acpi.h"
 
 #define SM(_v, _f) (((_v) << _f##_LSB) & _f##_MASK)
 
@@ -792,6 +793,18 @@ struct ath12k_base {
 	/* true means radio is on */
 	bool rfkill_radio_on;
 
+	struct {
+		u32 func_bit;
+		bool acpi_tas_enable;
+		bool acpi_bios_sar_enable;
+		u8 tas_cfg[ATH12K_ACPI_DSM_TAS_CFG_SIZE];
+		u8 tas_sar_power_table[ATH12K_ACPI_DSM_TAS_DATA_SIZE];
+		u8 bios_sar_data[ATH12K_ACPI_DSM_BIOS_SAR_DATA_SIZE];
+		u8 geo_offset_data[ATH12K_ACPI_DSM_GEO_OFFSET_DATA_SIZE];
+		u8 cca_data[ATH12K_ACPI_DSM_CCA_DATA_SIZE];
+		u8 band_edge_power[ATH12K_ACPI_DSM_BAND_EDGE_DATA_SIZE];
+	} *acdata;
+
 	/* must be last */
 	u8 drv_priv[] __aligned(sizeof(void *));
 };
@@ -850,6 +863,11 @@ static inline struct ath12k_skb_rxcb *ATH12K_SKB_RXCB(struct sk_buff *skb)
 static inline struct ath12k_vif *ath12k_vif_to_arvif(struct ieee80211_vif *vif)
 {
 	return (struct ath12k_vif *)vif->drv_priv;
+}
+
+static inline struct ath12k_sta *ath12k_sta_to_arsta(struct ieee80211_sta *sta)
+{
+	return (struct ath12k_sta *)sta->drv_priv;
 }
 
 static inline struct ath12k *ath12k_ab_to_ar(struct ath12k_base *ab,
