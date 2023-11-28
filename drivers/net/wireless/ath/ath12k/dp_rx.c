@@ -2133,12 +2133,14 @@ static void ath12k_get_dot11_hdr_from_rx_desc(struct ath12k *ar,
 
 	/* Add QOS header */
 	if (ieee80211_is_data_qos(hdr.frame_control)) {
+		struct ieee80211_hdr *qhdr = (struct ieee80211_hdr *)msdu->data;
+
 		qos_ctl = rxcb->tid;
 		if (mesh_ctrl)
 			qos_ctl |= IEEE80211_QOS_CTL_MESH_CONTROL_PRESENT;
 
 		/* TODO: Add other QoS ctl fields when required */
-		memcpy(msdu->data + (hdr_len - IEEE80211_QOS_CTL_LEN),
+		memcpy(ieee80211_get_qos_ctl(qhdr),
 		       &qos_ctl, IEEE80211_QOS_CTL_LEN);
 	}
 }
