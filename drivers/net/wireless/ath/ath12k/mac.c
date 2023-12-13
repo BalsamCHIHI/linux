@@ -2225,7 +2225,11 @@ static void ath12k_peer_assoc_prepare(struct ath12k *ar,
 				      struct ath12k_wmi_peer_assoc_arg *arg,
 				      bool reassoc)
 {
+	struct ath12k_sta *arsta;
+
 	lockdep_assert_held(&ar->conf_mutex);
+
+	arsta = ath12k_sta_to_arsta(sta);
 
 	memset(arg, 0, sizeof(*arg));
 
@@ -2243,6 +2247,7 @@ static void ath12k_peer_assoc_prepare(struct ath12k *ar,
 	ath12k_peer_assoc_h_phymode(ar, vif, sta, arg);
 	ath12k_peer_assoc_h_smps(sta, arg);
 
+	arsta->peer_nss = arg->peer_nss;
 	/* TODO: amsdu_disable req? */
 }
 
@@ -7158,9 +7163,9 @@ static u32 ath12k_get_phy_id(struct ath12k *ar, u32 band)
 }
 
 static int ath12k_mac_setup_channels_rates(struct ath12k *ar,
-					   u32 supported_bands)
+					   u32 supported_bands,
+					   struct ieee80211_supported_band *bands[])
 {
-	struct ieee80211_hw *hw = ar->hw;
 	struct ieee80211_supported_band *band;
 	struct ath12k_wmi_hal_reg_capabilities_ext_arg *reg_cap;
 	void *channels;
@@ -7186,7 +7191,7 @@ static int ath12k_mac_setup_channels_rates(struct ath12k *ar,
 		band->channels = channels;
 		band->n_bitrates = ath12k_g_rates_size;
 		band->bitrates = ath12k_g_rates;
-		hw->wiphy->bands[NL80211_BAND_2GHZ] = band;
+		bands[NL80211_BAND_2GHZ] = band;
 
 		if (ar->ab->hw_params->single_pdev_only) {
 			phy_id = ath12k_get_phy_id(ar, WMI_HOST_WLAN_2G_CAP);
@@ -7213,7 +7218,7 @@ static int ath12k_mac_setup_channels_rates(struct ath12k *ar,
 			band->channels = channels;
 			band->n_bitrates = ath12k_a_rates_size;
 			band->bitrates = ath12k_a_rates;
-			hw->wiphy->bands[NL80211_BAND_6GHZ] = band;
+			bands[NL80211_BAND_6GHZ] = band;
 			ath12k_mac_update_ch_list(ar, band,
 						  reg_cap->low_5ghz_chan,
 						  reg_cap->high_5ghz_chan);
@@ -7235,7 +7240,7 @@ static int ath12k_mac_setup_channels_rates(struct ath12k *ar,
 			band->channels = channels;
 			band->n_bitrates = ath12k_a_rates_size;
 			band->bitrates = ath12k_a_rates;
-			hw->wiphy->bands[NL80211_BAND_5GHZ] = band;
+			bands[NL80211_BAND_5GHZ] = band;
 
 			if (ar->ab->hw_params->single_pdev_only) {
 				phy_id = ath12k_get_phy_id(ar, WMI_HOST_WLAN_5G_CAP);
@@ -7349,7 +7354,17 @@ static const struct wiphy_iftype_ext_capab ath12k_iftypes_ext_capa[] = {
 	},
 };
 
-static void __ath12k_mac_unregister(struct ath12k *ar)
+static void ath12k_mac_cleanup_unregister(struct ath12k *ar)
+{
+	idr_for_each(&ar->txmgmt_idr, ath12k_mac_tx_mgmt_pending_free, ar);
+	idr_destroy(&ar->txmgmt_idr);
+
+	kfree(ar->mac.sbands[NL80211_BAND_2GHZ].channels);
+	kfree(ar->mac.sbands[NL80211_BAND_5GHZ].channels);
+	kfree(ar->mac.sbands[NL80211_BAND_6GHZ].channels);
+}
+
+void ath12k_mac_hw_unregister(struct ath12k *ar)
 {
 	struct ieee80211_hw *hw = ar->hw;
 	struct wiphy *wiphy = hw->wiphy;
@@ -7358,12 +7373,7 @@ static void __ath12k_mac_unregister(struct ath12k *ar)
 
 	ieee80211_unregister_hw(hw);
 
-	idr_for_each(&ar->txmgmt_idr, ath12k_mac_tx_mgmt_pending_free, ar);
-	idr_destroy(&ar->txmgmt_idr);
-
-	kfree(ar->mac.sbands[NL80211_BAND_2GHZ].channels);
-	kfree(ar->mac.sbands[NL80211_BAND_5GHZ].channels);
-	kfree(ar->mac.sbands[NL80211_BAND_6GHZ].channels);
+	ath12k_mac_cleanup_unregister(ar);
 
 	kfree(wiphy->iface_combinations[0].limits);
 	kfree(wiphy->iface_combinations);
@@ -7371,28 +7381,41 @@ static void __ath12k_mac_unregister(struct ath12k *ar)
 	SET_IEEE80211_DEV(hw, NULL);
 }
 
-void ath12k_mac_unregister(struct ath12k_base *ab)
+static int ath12k_mac_setup_register(struct ath12k *ar,
+				     u32 *ht_cap,
+				     struct ieee80211_supported_band *bands[])
 {
-	struct ath12k *ar;
-	struct ath12k_pdev *pdev;
-	int i;
+	struct ath12k_pdev_cap *cap = &ar->pdev->cap;
+	int ret;
 
-	for (i = 0; i < ab->num_radios; i++) {
-		pdev = &ab->pdevs[i];
-		ar = pdev->ar;
-		if (!ar)
-			continue;
+	init_waitqueue_head(&ar->txmgmt_empty_waitq);
+	idr_init(&ar->txmgmt_idr);
+	spin_lock_init(&ar->txmgmt_idr_lock);
 
-		__ath12k_mac_unregister(ar);
-	}
+	ath12k_pdev_caps_update(ar);
+
+	ret = ath12k_mac_setup_channels_rates(ar,
+					      cap->supported_bands,
+					      bands);
+	if (ret)
+		return ret;
+
+	ath12k_mac_setup_ht_vht_cap(ar, cap, ht_cap);
+	ath12k_mac_setup_sband_iftype_data(ar, cap);
+
+	ar->max_num_stations = TARGET_NUM_STATIONS;
+	ar->max_num_peers = TARGET_NUM_PEERS_PDEV;
+
+	return 0;
 }
 
-static int __ath12k_mac_register(struct ath12k *ar)
+int ath12k_mac_hw_register(struct ath12k *ar)
 {
 	struct ath12k_base *ab = ar->ab;
 	struct ieee80211_hw *hw = ar->hw;
 	struct wiphy *wiphy = hw->wiphy;
-	struct ath12k_pdev_cap *cap = &ar->pdev->cap;
+	struct ath12k_pdev *pdev = ar->pdev;
+	struct ath12k_pdev_cap *cap = &pdev->cap;
 	static const u32 cipher_suites[] = {
 		WLAN_CIPHER_SUITE_TKIP,
 		WLAN_CIPHER_SUITE_CCMP,
@@ -7407,24 +7430,24 @@ static int __ath12k_mac_register(struct ath12k *ar)
 	int ret;
 	u32 ht_cap = 0;
 
-	ath12k_pdev_caps_update(ar);
+	if (ab->pdevs_macaddr_valid) {
+		ether_addr_copy(ar->mac_addr, pdev->mac_addr);
+	} else {
+		ether_addr_copy(ar->mac_addr, ab->mac_addr);
+		ar->mac_addr[4] += ar->pdev_idx;
+	}
+
+	ret = ath12k_mac_setup_register(ar, &ht_cap, hw->wiphy->bands);
+	if (ret)
+		goto out;
 
 	SET_IEEE80211_PERM_ADDR(hw, ar->mac_addr);
-
 	SET_IEEE80211_DEV(hw, ab->dev);
-
-	ret = ath12k_mac_setup_channels_rates(ar,
-					      cap->supported_bands);
-	if (ret)
-		goto err;
-
-	ath12k_mac_setup_ht_vht_cap(ar, cap, &ht_cap);
-	ath12k_mac_setup_sband_iftype_data(ar, cap);
 
 	ret = ath12k_mac_setup_iface_combinations(ar);
 	if (ret) {
 		ath12k_err(ar->ab, "failed to setup interface combinations: %d\n", ret);
-		goto err_free_channels;
+		goto err_setup_unregister;
 	}
 
 	wiphy->available_antennas_rx = cap->rx_chain_mask;
@@ -7482,9 +7505,6 @@ static int __ath12k_mac_register(struct ath12k *ar)
 	wiphy->flags |= WIPHY_FLAG_AP_UAPSD;
 	wiphy->features |= NL80211_FEATURE_AP_MODE_CHAN_WIDTH_CHANGE |
 				   NL80211_FEATURE_AP_SCAN;
-
-	ar->max_num_stations = TARGET_NUM_STATIONS;
-	ar->max_num_peers = TARGET_NUM_PEERS_PDEV;
 
 	wiphy->max_ap_assoc_sta = ar->max_num_stations;
 
@@ -7552,71 +7572,64 @@ err_free_if_combs:
 	kfree(wiphy->iface_combinations[0].limits);
 	kfree(wiphy->iface_combinations);
 
-err_free_channels:
+err_setup_unregister:
 	kfree(ar->mac.sbands[NL80211_BAND_2GHZ].channels);
 	kfree(ar->mac.sbands[NL80211_BAND_5GHZ].channels);
 	kfree(ar->mac.sbands[NL80211_BAND_6GHZ].channels);
 
-err:
 	SET_IEEE80211_DEV(hw, NULL);
+
+out:
 	return ret;
 }
 
-int ath12k_mac_register(struct ath12k_base *ab)
+static void ath12k_mac_setup(struct ath12k *ar)
 {
-	struct ath12k *ar;
-	struct ath12k_pdev *pdev;
-	int i;
-	int ret;
+	struct ath12k_base *ab = ar->ab;
+	struct ath12k_pdev *pdev = ar->pdev;
+	u8 pdev_idx = ar->pdev_idx;
 
-	if (test_bit(ATH12K_FLAG_REGISTERED, &ab->dev_flags))
-		return 0;
+	ar->lmac_id = ath12k_hw_get_mac_from_pdev_id(ab->hw_params, pdev_idx);
 
-	for (i = 0; i < ab->num_radios; i++) {
-		pdev = &ab->pdevs[i];
-		ar = pdev->ar;
-		if (ab->pdevs_macaddr_valid) {
-			ether_addr_copy(ar->mac_addr, pdev->mac_addr);
-		} else {
-			ether_addr_copy(ar->mac_addr, ab->mac_addr);
-			ar->mac_addr[4] += i;
-		}
+	ar->wmi = &ab->wmi_ab.wmi[pdev_idx];
+	/* FIXME: wmi[0] is already initialized during attach,
+	 * Should we do this again?
+	 */
+	ath12k_wmi_pdev_attach(ab, pdev_idx);
 
-		ret = __ath12k_mac_register(ar);
-		if (ret)
-			goto err_cleanup;
+	ar->cfg_tx_chainmask = pdev->cap.tx_chain_mask;
+	ar->cfg_rx_chainmask = pdev->cap.rx_chain_mask;
+	ar->num_tx_chains = hweight32(pdev->cap.tx_chain_mask);
+	ar->num_rx_chains = hweight32(pdev->cap.rx_chain_mask);
 
-		init_waitqueue_head(&ar->txmgmt_empty_waitq);
-		idr_init(&ar->txmgmt_idr);
-		spin_lock_init(&ar->txmgmt_idr_lock);
-	}
+	spin_lock_init(&ar->data_lock);
+	INIT_LIST_HEAD(&ar->arvifs);
+	INIT_LIST_HEAD(&ar->ppdu_stats_info);
+	mutex_init(&ar->conf_mutex);
+	init_completion(&ar->vdev_setup_done);
+	init_completion(&ar->vdev_delete_done);
+	init_completion(&ar->peer_assoc_done);
+	init_completion(&ar->peer_delete_done);
+	init_completion(&ar->install_key_done);
+	init_completion(&ar->bss_survey_done);
+	init_completion(&ar->scan.started);
+	init_completion(&ar->scan.completed);
 
-	/* Initialize channel counters frequency value in hertz */
-	ab->cc_freq_hz = 320000;
-	ab->free_vdev_map = (1LL << (ab->num_radios * TARGET_NUM_VDEVS)) - 1;
+	INIT_DELAYED_WORK(&ar->scan.timeout, ath12k_scan_timeout_work);
+	INIT_WORK(&ar->regd_update_work, ath12k_regd_update_work);
 
-	return 0;
-
-err_cleanup:
-	for (i = i - 1; i >= 0; i--) {
-		pdev = &ab->pdevs[i];
-		ar = pdev->ar;
-		__ath12k_mac_unregister(ar);
-	}
-
-	return ret;
+	INIT_WORK(&ar->wmi_mgmt_tx_work, ath12k_mgmt_over_wmi_tx_work);
+	skb_queue_head_init(&ar->wmi_mgmt_tx_queue);
+	clear_bit(ATH12K_FLAG_MONITOR_ENABLED, &ar->monitor_flags);
 }
 
-int ath12k_mac_allocate(struct ath12k_base *ab)
+int ath12k_mac_hw_allocate(struct ath12k_base *ab)
 {
 	struct ieee80211_hw *hw;
 	struct ath12k *ar;
 	struct ath12k_pdev *pdev;
 	int ret;
 	int i;
-
-	if (test_bit(ATH12K_FLAG_REGISTERED, &ab->dev_flags))
-		return 0;
 
 	for (i = 0; i < ab->num_radios; i++) {
 		pdev = &ab->pdevs[i];
@@ -7632,50 +7645,20 @@ int ath12k_mac_allocate(struct ath12k_base *ab)
 		ar->ab = ab;
 		ar->pdev = pdev;
 		ar->pdev_idx = i;
-		ar->lmac_id = ath12k_hw_get_mac_from_pdev_id(ab->hw_params, i);
-
-		ar->wmi = &ab->wmi_ab.wmi[i];
-		/* FIXME: wmi[0] is already initialized during attach,
-		 * Should we do this again?
-		 */
-		ath12k_wmi_pdev_attach(ab, i);
-
-		ar->cfg_tx_chainmask = pdev->cap.tx_chain_mask;
-		ar->cfg_rx_chainmask = pdev->cap.rx_chain_mask;
-		ar->num_tx_chains = hweight32(pdev->cap.tx_chain_mask);
-		ar->num_rx_chains = hweight32(pdev->cap.rx_chain_mask);
-
 		pdev->ar = ar;
-		spin_lock_init(&ar->data_lock);
-		INIT_LIST_HEAD(&ar->arvifs);
-		INIT_LIST_HEAD(&ar->ppdu_stats_info);
-		mutex_init(&ar->conf_mutex);
-		init_completion(&ar->vdev_setup_done);
-		init_completion(&ar->vdev_delete_done);
-		init_completion(&ar->peer_assoc_done);
-		init_completion(&ar->peer_delete_done);
-		init_completion(&ar->install_key_done);
-		init_completion(&ar->bss_survey_done);
-		init_completion(&ar->scan.started);
-		init_completion(&ar->scan.completed);
 
-		INIT_DELAYED_WORK(&ar->scan.timeout, ath12k_scan_timeout_work);
-		INIT_WORK(&ar->regd_update_work, ath12k_regd_update_work);
-
-		INIT_WORK(&ar->wmi_mgmt_tx_work, ath12k_mgmt_over_wmi_tx_work);
-		skb_queue_head_init(&ar->wmi_mgmt_tx_queue);
-		clear_bit(ATH12K_FLAG_MONITOR_ENABLED, &ar->monitor_flags);
+		ath12k_mac_setup(ar);
 	}
 
 	return 0;
 
 err_free_mac:
-	ath12k_mac_destroy(ab);
+	ath12k_mac_hw_destroy(ab);
 
 	return ret;
 }
 
-void ath12k_mac_destroy(struct ath12k_base *ab)
+void ath12k_mac_hw_destroy(struct ath12k_base *ab)
 {
 	struct ath12k *ar;
 	struct ath12k_pdev *pdev;
@@ -7690,4 +7673,91 @@ void ath12k_mac_destroy(struct ath12k_base *ab)
 		ieee80211_free_hw(ar->hw);
 		pdev->ar = NULL;
 	}
+}
+
+enum nl80211_he_ru_alloc ath12k_mac_phy_he_ru_to_nl80211_he_ru_alloc(u16 ru_phy)
+{
+	enum nl80211_he_ru_alloc ret;
+
+	switch (ru_phy) {
+	case RU_26:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_26;
+		break;
+	case RU_52:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_52;
+		break;
+	case RU_106:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_106;
+		break;
+	case RU_242:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_242;
+		break;
+	case RU_484:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_484;
+		break;
+	case RU_996:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_996;
+		break;
+	default:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_26;
+		break;
+	}
+
+	return ret;
+}
+
+enum nl80211_he_ru_alloc ath12k_mac_he_ru_tones_to_nl80211_he_ru_alloc(u16 ru_tones)
+{
+	enum nl80211_he_ru_alloc ret;
+
+	switch (ru_tones) {
+	case 26:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_26;
+		break;
+	case 52:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_52;
+		break;
+	case 106:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_106;
+		break;
+	case 242:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_242;
+		break;
+	case 484:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_484;
+		break;
+	case 996:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_996;
+		break;
+	case (996 * 2):
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_2x996;
+		break;
+	default:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_26;
+		break;
+	}
+
+	return ret;
+}
+
+enum nl80211_he_gi ath12k_mac_he_gi_to_nl80211_he_gi(u8 sgi)
+{
+	enum nl80211_he_gi ret;
+
+	switch (sgi) {
+	case RX_MSDU_START_SGI_0_8_US:
+		ret = NL80211_RATE_INFO_HE_GI_0_8;
+		break;
+	case RX_MSDU_START_SGI_1_6_US:
+		ret = NL80211_RATE_INFO_HE_GI_1_6;
+		break;
+	case RX_MSDU_START_SGI_3_2_US:
+		ret = NL80211_RATE_INFO_HE_GI_3_2;
+		break;
+	default:
+		ret = NL80211_RATE_INFO_HE_GI_0_8;
+		break;
+	}
+
+	return ret;
 }
