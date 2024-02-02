@@ -563,7 +563,8 @@ struct ath12k_vif *ath12k_mac_get_arvif_by_vdev_id(struct ath12k_base *ab,
 
 	for (i = 0; i < ab->num_radios; i++) {
 		pdev = rcu_dereference(ab->pdevs_active[i]);
-		if (pdev && pdev->ar) {
+		if (pdev && pdev->ar &&
+		    (pdev->ar->allocated_vdev_map & (1LL << vdev_id))) {
 			arvif = ath12k_mac_get_arvif(pdev->ar, vdev_id);
 			if (arvif)
 				return arvif;
@@ -6153,6 +6154,11 @@ ath12k_mac_vdev_start_restart(struct ath12k_vif *arvif,
 	arg.pref_tx_streams = ar->num_tx_chains;
 	arg.pref_rx_streams = ar->num_rx_chains;
 
+	/* Fill the MBSSID flags to indicate AP is non MBSSID by default
+	 * Corresponding flags would be updated with MBSSID support.
+	 */
+	arg.mbssid_flags = WMI_VDEV_MBSSID_FLAGS_NON_MBSSID_AP;
+
 	if (arvif->vdev_type == WMI_VDEV_TYPE_AP) {
 		arg.ssid = arvif->u.ap.ssid;
 		arg.ssid_len = arvif->u.ap.ssid_len;
@@ -7619,8 +7625,8 @@ static int ath12k_mac_setup_register(struct ath12k *ar,
 	ath12k_mac_setup_ht_vht_cap(ar, cap, ht_cap);
 	ath12k_mac_setup_sband_iftype_data(ar, cap);
 
-	ar->max_num_stations = TARGET_NUM_STATIONS;
-	ar->max_num_peers = TARGET_NUM_PEERS_PDEV;
+	ar->max_num_stations = ath12k_core_get_max_station_per_radio(ar->ab);
+	ar->max_num_peers = ath12k_core_get_max_peers_per_radio(ar->ab);
 
 	return 0;
 }
