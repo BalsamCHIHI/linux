@@ -27,6 +27,7 @@
 #include "testmode.h"
 #include "wmi-ops.h"
 #include "coredump.h"
+#include "leds.h"
 
 unsigned int ath10k_debug_mask;
 EXPORT_SYMBOL(ath10k_debug_mask);
@@ -68,6 +69,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca988x hw2.0",
 		.patch_load_addr = QCA988X_HW_2_0_PATCH_LOAD_ADDR,
 		.uart_pin = 7,
+		.led_pin = 1,
 		.cc_wraparound_type = ATH10K_HW_CC_WRAP_SHIFTED_ALL,
 		.otp_exe_param = 0,
 		.channel_counters_freq_hz = 88000,
@@ -109,6 +111,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca988x hw2.0 ubiquiti",
 		.patch_load_addr = QCA988X_HW_2_0_PATCH_LOAD_ADDR,
 		.uart_pin = 7,
+		.led_pin = 0,
 		.cc_wraparound_type = ATH10K_HW_CC_WRAP_SHIFTED_ALL,
 		.otp_exe_param = 0,
 		.channel_counters_freq_hz = 88000,
@@ -151,6 +154,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca9887 hw1.0",
 		.patch_load_addr = QCA9887_HW_1_0_PATCH_LOAD_ADDR,
 		.uart_pin = 7,
+		.led_pin = 1,
 		.cc_wraparound_type = ATH10K_HW_CC_WRAP_SHIFTED_ALL,
 		.otp_exe_param = 0,
 		.channel_counters_freq_hz = 88000,
@@ -193,6 +197,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca6174 hw3.2 sdio",
 		.patch_load_addr = QCA6174_HW_3_0_PATCH_LOAD_ADDR,
 		.uart_pin = 19,
+		.led_pin = 0,
 		.otp_exe_param = 0,
 		.channel_counters_freq_hz = 88000,
 		.max_probe_resp_desc_thres = 0,
@@ -230,6 +235,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca6164 hw2.1",
 		.patch_load_addr = QCA6174_HW_2_1_PATCH_LOAD_ADDR,
 		.uart_pin = 6,
+		.led_pin = 0,
 		.otp_exe_param = 0,
 		.channel_counters_freq_hz = 88000,
 		.max_probe_resp_desc_thres = 0,
@@ -271,6 +277,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca6174 hw2.1",
 		.patch_load_addr = QCA6174_HW_2_1_PATCH_LOAD_ADDR,
 		.uart_pin = 6,
+		.led_pin = 0,
 		.otp_exe_param = 0,
 		.channel_counters_freq_hz = 88000,
 		.max_probe_resp_desc_thres = 0,
@@ -312,6 +319,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca6174 hw3.0",
 		.patch_load_addr = QCA6174_HW_3_0_PATCH_LOAD_ADDR,
 		.uart_pin = 6,
+		.led_pin = 0,
 		.otp_exe_param = 0,
 		.channel_counters_freq_hz = 88000,
 		.max_probe_resp_desc_thres = 0,
@@ -353,6 +361,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca6174 hw3.2",
 		.patch_load_addr = QCA6174_HW_3_0_PATCH_LOAD_ADDR,
 		.uart_pin = 6,
+		.led_pin = 0,
 		.otp_exe_param = 0,
 		.channel_counters_freq_hz = 88000,
 		.max_probe_resp_desc_thres = 0,
@@ -398,6 +407,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca99x0 hw2.0",
 		.patch_load_addr = QCA99X0_HW_2_0_PATCH_LOAD_ADDR,
 		.uart_pin = 7,
+		.led_pin = 17,
 		.otp_exe_param = 0x00000700,
 		.continuous_frag_desc = true,
 		.cck_rate_map_rev2 = true,
@@ -445,6 +455,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca9984/qca9994 hw1.0",
 		.patch_load_addr = QCA9984_HW_1_0_PATCH_LOAD_ADDR,
 		.uart_pin = 7,
+		.led_pin = 17,
 		.cc_wraparound_type = ATH10K_HW_CC_WRAP_SHIFTED_EACH,
 		.otp_exe_param = 0x00000700,
 		.continuous_frag_desc = true,
@@ -499,6 +510,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca9888 hw2.0",
 		.patch_load_addr = QCA9888_HW_2_0_PATCH_LOAD_ADDR,
 		.uart_pin = 7,
+		.led_pin = 17,
 		.cc_wraparound_type = ATH10K_HW_CC_WRAP_SHIFTED_EACH,
 		.otp_exe_param = 0x00000700,
 		.continuous_frag_desc = true,
@@ -550,6 +562,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca9377 hw1.0",
 		.patch_load_addr = QCA9377_HW_1_0_PATCH_LOAD_ADDR,
 		.uart_pin = 6,
+		.led_pin = 0,
 		.otp_exe_param = 0,
 		.channel_counters_freq_hz = 88000,
 		.max_probe_resp_desc_thres = 0,
@@ -591,6 +604,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca9377 hw1.1",
 		.patch_load_addr = QCA9377_HW_1_0_PATCH_LOAD_ADDR,
 		.uart_pin = 6,
+		.led_pin = 0,
 		.otp_exe_param = 0,
 		.channel_counters_freq_hz = 88000,
 		.max_probe_resp_desc_thres = 0,
@@ -634,6 +648,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca9377 hw1.1 sdio",
 		.patch_load_addr = QCA9377_HW_1_0_PATCH_LOAD_ADDR,
 		.uart_pin = 19,
+		.led_pin = 0,
 		.otp_exe_param = 0,
 		.channel_counters_freq_hz = 88000,
 		.max_probe_resp_desc_thres = 0,
@@ -668,6 +683,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.name = "qca4019 hw1.0",
 		.patch_load_addr = QCA4019_HW_1_0_PATCH_LOAD_ADDR,
 		.uart_pin = 7,
+		.led_pin = 0,
 		.cc_wraparound_type = ATH10K_HW_CC_WRAP_SHIFTED_EACH,
 		.otp_exe_param = 0x0010000,
 		.continuous_frag_desc = true,
@@ -714,6 +730,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.dev_id = 0,
 		.bus = ATH10K_BUS_SNOC,
 		.name = "wcn3990 hw1.0",
+		.led_pin = 0,
 		.continuous_frag_desc = true,
 		.tx_chain_mask = 0x7,
 		.rx_chain_mask = 0x7,
@@ -3239,6 +3256,10 @@ int ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode,
 		goto err_hif_stop;
 	}
 
+	status = ath10k_leds_start(ar);
+	if (status)
+		goto err_hif_stop;
+
 	return 0;
 
 err_hif_stop:
@@ -3497,9 +3518,18 @@ static void ath10k_core_register_work(struct work_struct *work)
 		goto err_spectral_destroy;
 	}
 
+	status = ath10k_leds_register(ar);
+	if (status) {
+		ath10k_err(ar, "could not register leds: %d\n",
+			   status);
+		goto err_thermal_unregister;
+	}
+
 	set_bit(ATH10K_FLAG_CORE_REGISTERED, &ar->dev_flags);
 	return;
 
+err_thermal_unregister:
+	ath10k_thermal_unregister(ar);
 err_spectral_destroy:
 	ath10k_spectral_destroy(ar);
 err_debug_destroy:
@@ -3534,6 +3564,8 @@ void ath10k_core_unregister(struct ath10k *ar)
 
 	if (!test_bit(ATH10K_FLAG_CORE_REGISTERED, &ar->dev_flags))
 		return;
+
+	ath10k_leds_unregister(ar);
 
 	ath10k_thermal_unregister(ar);
 	/* Stop spectral before unregistering from mac80211 to remove the
