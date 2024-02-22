@@ -958,6 +958,9 @@ struct rtw89_port_reg {
 	u32 mbssid;
 	u32 mbssid_drop;
 	u32 tsf_sync;
+	u32 ptcl_dbg;
+	u32 ptcl_dbg_info;
+	u32 bcn_drop_all;
 	u32 hiq_win[RTW89_PORT_NUM];
 };
 
@@ -3044,6 +3047,7 @@ struct rtw89_vif {
 	u8 bcn_hit_cond;
 	u8 hit_rule;
 	u8 last_noa_nr;
+	u64 sync_bcn_tsf;
 	bool offchan;
 	bool trigger;
 	bool lsig_txop;
@@ -3302,6 +3306,7 @@ struct rtw89_scan_option {
 
 enum rtw89_qta_mode {
 	RTW89_QTA_SCC,
+	RTW89_QTA_DBCC,
 	RTW89_QTA_DLFW,
 	RTW89_QTA_WOW,
 
@@ -3913,7 +3918,7 @@ enum rtw89_host_rpr_mode {
 	RTW89_RPR_MODE_STF
 };
 
-#define RTW89_COMPLETION_BUF_SIZE 24
+#define RTW89_COMPLETION_BUF_SIZE 40
 #define RTW89_WAIT_COND_IDLE UINT_MAX
 
 struct rtw89_completion_data {
@@ -4135,6 +4140,7 @@ struct rtw89_tas_info {
 
 struct rtw89_chanctx_cfg {
 	enum rtw89_sub_entity_idx idx;
+	int ref_count;
 };
 
 enum rtw89_chanctx_changes {
@@ -4154,13 +4160,16 @@ enum rtw89_entity_mode {
 	RTW89_ENTITY_MODE_MCC,
 
 	NUM_OF_RTW89_ENTITY_MODE,
-	RTW89_ENTITY_MODE_INVALID = NUM_OF_RTW89_ENTITY_MODE,
+	RTW89_ENTITY_MODE_INVALID = -EINVAL,
+	RTW89_ENTITY_MODE_UNHANDLED = -ESRCH,
 };
 
 struct rtw89_sub_entity {
 	struct cfg80211_chan_def chandef;
 	struct rtw89_chan chan;
 	struct rtw89_chan_rcd rcd;
+
+	/* only assigned when running with chanctx_ops */
 	struct rtw89_chanctx_cfg *cfg;
 };
 
@@ -4859,6 +4868,9 @@ struct rtw89_mcc_role {
 	struct rtw89_mcc_policy policy;
 	struct rtw89_mcc_limit limit;
 
+	/* only valid when running with FW MRC mechanism */
+	u8 slot_idx;
+
 	/* byte-array in LE order for FW */
 	u8 macid_bitmap[BITS_TO_BYTES(RTW89_MAX_MAC_ID_NUM)];
 
@@ -4902,7 +4914,11 @@ struct rtw89_mcc_sync {
 	bool enable;
 	u16 offset; /* TU */
 	u8 macid_src;
+	u8 band_src;
+	u8 port_src;
 	u8 macid_tgt;
+	u8 band_tgt;
+	u8 port_tgt;
 };
 
 struct rtw89_mcc_config {
@@ -6040,7 +6056,7 @@ void rtw89_core_set_chip_txpwr(struct rtw89_dev *rtwdev);
 void rtw89_get_default_chandef(struct cfg80211_chan_def *chandef);
 void rtw89_get_channel_params(const struct cfg80211_chan_def *chandef,
 			      struct rtw89_chan *chan);
-void rtw89_set_channel(struct rtw89_dev *rtwdev);
+int rtw89_set_channel(struct rtw89_dev *rtwdev);
 void rtw89_get_channel(struct rtw89_dev *rtwdev, struct rtw89_vif *rtwvif,
 		       struct rtw89_chan *chan);
 u8 rtw89_core_acquire_bit_map(unsigned long *addr, unsigned long size);

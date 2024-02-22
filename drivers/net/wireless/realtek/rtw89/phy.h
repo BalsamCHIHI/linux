@@ -510,6 +510,7 @@ struct rtw89_phy_gen_def {
 	const struct rtw89_ccx_regs *ccx;
 	const struct rtw89_physts_regs *physts;
 	const struct rtw89_cfo_regs *cfo;
+	u32 (*phy0_phy1_offset)(struct rtw89_dev *rtwdev, u32 addr);
 	void (*config_bb_gain)(struct rtw89_dev *rtwdev,
 			       const struct rtw89_reg2_def *reg,
 			       enum rtw89_rf_path rf_path,
@@ -777,6 +778,8 @@ void rtw89_phy_write_reg3_tbl(struct rtw89_dev *rtwdev,
 u8 rtw89_phy_get_txsc(struct rtw89_dev *rtwdev,
 		      const struct rtw89_chan *chan,
 		      enum rtw89_bandwidth dbw);
+u8 rtw89_phy_get_txsb(struct rtw89_dev *rtwdev, const struct rtw89_chan *chan,
+		      enum rtw89_bandwidth dbw);
 u32 rtw89_phy_read_rf(struct rtw89_dev *rtwdev, enum rtw89_rf_path rf_path,
 		      u32 addr, u32 mask);
 u32 rtw89_phy_read_rf_v1(struct rtw89_dev *rtwdev, enum rtw89_rf_path rf_path,
@@ -942,5 +945,9 @@ void rtw89_decode_chan_idx(struct rtw89_dev *rtwdev, u8 chan_idx,
 void rtw89_phy_config_edcca(struct rtw89_dev *rtwdev, bool scan);
 void rtw89_phy_edcca_track(struct rtw89_dev *rtwdev);
 void rtw89_phy_edcca_thre_calc(struct rtw89_dev *rtwdev);
+enum rtw89_rf_path_bit rtw89_phy_get_kpath(struct rtw89_dev *rtwdev,
+					   enum rtw89_phy_idx phy_idx);
+enum rtw89_rf_path rtw89_phy_get_syn_sel(struct rtw89_dev *rtwdev,
+					 enum rtw89_phy_idx phy_idx);
 
 #endif

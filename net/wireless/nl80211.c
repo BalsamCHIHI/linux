@@ -1198,11 +1198,11 @@ static int nl80211_msg_put_channel(struct sk_buff *msg, struct wiphy *wiphy,
 		if ((chan->flags & IEEE80211_CHAN_DFS_CONCURRENT) &&
 		    nla_put_flag(msg, NL80211_FREQUENCY_ATTR_DFS_CONCURRENT))
 			goto nla_put_failure;
-		if ((chan->flags & IEEE80211_CHAN_NO_UHB_VLP_CLIENT) &&
-		    nla_put_flag(msg, NL80211_FREQUENCY_ATTR_NO_UHB_VLP_CLIENT))
+		if ((chan->flags & IEEE80211_CHAN_NO_6GHZ_VLP_CLIENT) &&
+		    nla_put_flag(msg, NL80211_FREQUENCY_ATTR_NO_6GHZ_VLP_CLIENT))
 			goto nla_put_failure;
-		if ((chan->flags & IEEE80211_CHAN_NO_UHB_AFC_CLIENT) &&
-		    nla_put_flag(msg, NL80211_FREQUENCY_ATTR_NO_UHB_AFC_CLIENT))
+		if ((chan->flags & IEEE80211_CHAN_NO_6GHZ_AFC_CLIENT) &&
+		    nla_put_flag(msg, NL80211_FREQUENCY_ATTR_NO_6GHZ_AFC_CLIENT))
 			goto nla_put_failure;
 	}
 
@@ -3218,9 +3218,9 @@ static bool nl80211_can_set_dev_channel(struct wireless_dev *wdev)
 		wdev->iftype == NL80211_IFTYPE_P2P_GO;
 }
 
-int nl80211_parse_chandef(struct cfg80211_registered_device *rdev,
-			  struct genl_info *info,
-			  struct cfg80211_chan_def *chandef)
+static int _nl80211_parse_chandef(struct cfg80211_registered_device *rdev,
+				  struct genl_info *info, bool monitor,
+				  struct cfg80211_chan_def *chandef)
 {
 	struct netlink_ext_ack *extack = info->extack;
 	struct nlattr **attrs = info->attrs;
@@ -3245,10 +3245,9 @@ int nl80211_parse_chandef(struct cfg80211_registered_device *rdev,
 	chandef->freq1_offset = control_freq % 1000;
 	chandef->center_freq2 = 0;
 
-	/* Primary channel not allowed */
-	if (!chandef->chan || chandef->chan->flags & IEEE80211_CHAN_DISABLED) {
+	if (!chandef->chan) {
 		NL_SET_ERR_MSG_ATTR(extack, attrs[NL80211_ATTR_WIPHY_FREQ],
-				    "Channel is disabled");
+				    "Unknown channel");
 		return -EINVAL;
 	}
 
@@ -3343,8 +3342,9 @@ int nl80211_parse_chandef(struct cfg80211_registered_device *rdev,
 		return -EINVAL;
 	}
 
-	if (!cfg80211_chandef_usable(&rdev->wiphy, chandef,
-				     IEEE80211_CHAN_DISABLED)) {
+	if (!_cfg80211_chandef_usable(&rdev->wiphy, chandef,
+				      IEEE80211_CHAN_DISABLED,
+				      monitor)) {
 		NL_SET_ERR_MSG(extack, "(extension) channel is disabled");
 		return -EINVAL;
 	}
@@ -3357,6 +3357,13 @@ int nl80211_parse_chandef(struct cfg80211_registered_device *rdev,
 	}
 
 	return 0;
+}
+
+int nl80211_parse_chandef(struct cfg80211_registered_device *rdev,
+			  struct genl_info *info,
+			  struct cfg80211_chan_def *chandef)
+{
+	return _nl80211_parse_chandef(rdev, info, false, chandef);
 }
 
 static int __nl80211_set_channel(struct cfg80211_registered_device *rdev,
@@ -3383,7 +3390,9 @@ static int __nl80211_set_channel(struct cfg80211_registered_device *rdev,
 		link_id = 0;
 	}
 
-	result = nl80211_parse_chandef(rdev, info, &chandef);
+	result = _nl80211_parse_chandef(rdev, info,
+					iftype == NL80211_IFTYPE_MONITOR,
+					&chandef);
 	if (result)
 		return result;
 
@@ -4196,8 +4205,6 @@ static int nl80211_set_interface(struct sk_buff *skb, struct genl_info *info)
 		if (netif_running(dev))
 			return -EBUSY;
 
-		BUILD_BUG_ON(IEEE80211_MAX_SSID_LEN !=
-			     IEEE80211_MAX_MESH_ID_LEN);
 		wdev->u.mesh.id_up_len =
 			nla_len(info->attrs[NL80211_ATTR_MESH_ID]);
 		memcpy(wdev->u.mesh.id,
@@ -4303,8 +4310,6 @@ static int _nl80211_new_interface(struct sk_buff *skb, struct genl_info *info)
 	case NL80211_IFTYPE_MESH_POINT:
 		if (!info->attrs[NL80211_ATTR_MESH_ID])
 			break;
-		BUILD_BUG_ON(IEEE80211_MAX_SSID_LEN !=
-			     IEEE80211_MAX_MESH_ID_LEN);
 		wdev->u.mesh.id_up_len =
 			nla_len(info->attrs[NL80211_ATTR_MESH_ID]);
 		memcpy(wdev->u.mesh.id,
@@ -7624,14 +7629,16 @@ static int nl80211_del_station(struct sk_buff *skb, struct genl_info *info)
 {
 	struct cfg80211_registered_device *rdev = info->user_ptr[0];
 	struct net_device *dev = info->user_ptr[1];
+	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	struct station_del_parameters params;
+	int link_id = nl80211_link_id_or_invalid(info->attrs);
 
 	memset(&params, 0, sizeof(params));
 
 	if (info->attrs[NL80211_ATTR_MAC])
 		params.mac = nla_data(info->attrs[NL80211_ATTR_MAC]);
 
-	switch (dev->ieee80211_ptr->iftype) {
+	switch (wdev->iftype) {
 	case NL80211_IFTYPE_AP:
 	case NL80211_IFTYPE_AP_VLAN:
 	case NL80211_IFTYPE_MESH_POINT:
@@ -7671,6 +7678,17 @@ static int nl80211_del_station(struct sk_buff *skb, struct genl_info *info)
 		/* Default to reason code 2 */
 		params.reason_code = WLAN_REASON_PREV_AUTH_NOT_VALID;
 	}
+
+	/* Link ID not expected in case of non-ML operation */
+	if (!wdev->valid_links && link_id != -1)
+		return -EINVAL;
+
+	/* If given, a valid link ID should be passed during MLO */
+	if (wdev->valid_links && link_id >= 0 &&
+	    !(wdev->valid_links & BIT(link_id)))
+		return -EINVAL;
+
+	params.link_id = link_id;
 
 	return rdev_del_station(rdev, dev, &params);
 }
@@ -10030,6 +10048,42 @@ static int nl80211_notify_radar_detection(struct sk_buff *skb,
 	return 0;
 }
 
+static int nl80211_parse_counter_offsets(struct cfg80211_registered_device *rdev,
+					 const u8 *data, size_t datalen,
+					 int first_count, struct nlattr *attr,
+					 const u16 **offsets, unsigned int *n_offsets)
+{
+	int i;
+
+	*n_offsets = 0;
+
+	if (!attr)
+		return 0;
+
+	if (!nla_len(attr) || (nla_len(attr) % sizeof(u16)))
+		return -EINVAL;
+
+	*n_offsets = nla_len(attr) / sizeof(u16);
+	if (rdev->wiphy.max_num_csa_counters &&
+	    (*n_offsets > rdev->wiphy.max_num_csa_counters))
+		return -EINVAL;
+
+	*offsets = nla_data(attr);
+
+	/* sanity checks - counters should fit and be the same */
+	for (i = 0; i < *n_offsets; i++) {
+		u16 offset = (*offsets)[i];
+
+		if (offset >= datalen)
+			return -EINVAL;
+
+		if (first_count != -1 && data[offset] != first_count)
+			return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int nl80211_channel_switch(struct sk_buff *skb, struct genl_info *info)
 {
 	struct cfg80211_registered_device *rdev = info->user_ptr[0];
@@ -10041,7 +10095,6 @@ static int nl80211_channel_switch(struct sk_buff *skb, struct genl_info *info)
 	int err;
 	bool need_new_beacon = false;
 	bool need_handle_dfs_flag = true;
-	int len, i;
 	u32 cs_count;
 
 	if (!rdev->ops->channel_switch ||
@@ -10126,72 +10179,23 @@ static int nl80211_channel_switch(struct sk_buff *skb, struct genl_info *info)
 		goto free;
 	}
 
-	len = nla_len(csa_attrs[NL80211_ATTR_CNTDWN_OFFS_BEACON]);
-	if (!len || (len % sizeof(u16))) {
-		err = -EINVAL;
+	err = nl80211_parse_counter_offsets(rdev, params.beacon_csa.tail,
+					    params.beacon_csa.tail_len,
+					    params.count,
+					    csa_attrs[NL80211_ATTR_CNTDWN_OFFS_BEACON],
+					    &params.counter_offsets_beacon,
+					    &params.n_counter_offsets_beacon);
+	if (err)
 		goto free;
-	}
 
-	params.n_counter_offsets_beacon = len / sizeof(u16);
-	if (rdev->wiphy.max_num_csa_counters &&
-	    (params.n_counter_offsets_beacon >
-	     rdev->wiphy.max_num_csa_counters)) {
-		err = -EINVAL;
+	err = nl80211_parse_counter_offsets(rdev, params.beacon_csa.probe_resp,
+					    params.beacon_csa.probe_resp_len,
+					    params.count,
+					    csa_attrs[NL80211_ATTR_CNTDWN_OFFS_PRESP],
+					    &params.counter_offsets_presp,
+					    &params.n_counter_offsets_presp);
+	if (err)
 		goto free;
-	}
-
-	params.counter_offsets_beacon =
-		nla_data(csa_attrs[NL80211_ATTR_CNTDWN_OFFS_BEACON]);
-
-	/* sanity checks - counters should fit and be the same */
-	for (i = 0; i < params.n_counter_offsets_beacon; i++) {
-		u16 offset = params.counter_offsets_beacon[i];
-
-		if (offset >= params.beacon_csa.tail_len) {
-			err = -EINVAL;
-			goto free;
-		}
-
-		if (params.beacon_csa.tail[offset] != params.count) {
-			err = -EINVAL;
-			goto free;
-		}
-	}
-
-	if (csa_attrs[NL80211_ATTR_CNTDWN_OFFS_PRESP]) {
-		len = nla_len(csa_attrs[NL80211_ATTR_CNTDWN_OFFS_PRESP]);
-		if (!len || (len % sizeof(u16))) {
-			err = -EINVAL;
-			goto free;
-		}
-
-		params.n_counter_offsets_presp = len / sizeof(u16);
-		if (rdev->wiphy.max_num_csa_counters &&
-		    (params.n_counter_offsets_presp >
-		     rdev->wiphy.max_num_csa_counters)) {
-			err = -EINVAL;
-			goto free;
-		}
-
-		params.counter_offsets_presp =
-			nla_data(csa_attrs[NL80211_ATTR_CNTDWN_OFFS_PRESP]);
-
-		/* sanity checks - counters should fit and be the same */
-		for (i = 0; i < params.n_counter_offsets_presp; i++) {
-			u16 offset = params.counter_offsets_presp[i];
-
-			if (offset >= params.beacon_csa.probe_resp_len) {
-				err = -EINVAL;
-				goto free;
-			}
-
-			if (params.beacon_csa.probe_resp[offset] !=
-			    params.count) {
-				err = -EINVAL;
-				goto free;
-			}
-		}
-	}
 
 skip_beacons:
 	err = nl80211_parse_chandef(rdev, info, &params.chandef);
@@ -12620,23 +12624,12 @@ static int nl80211_tx_mgmt(struct sk_buff *skb, struct genl_info *info)
 	params.buf = nla_data(info->attrs[NL80211_ATTR_FRAME]);
 	params.len = nla_len(info->attrs[NL80211_ATTR_FRAME]);
 
-	if (info->attrs[NL80211_ATTR_CSA_C_OFFSETS_TX]) {
-		int len = nla_len(info->attrs[NL80211_ATTR_CSA_C_OFFSETS_TX]);
-		int i;
-
-		if (len % sizeof(u16))
-			return -EINVAL;
-
-		params.n_csa_offsets = len / sizeof(u16);
-		params.csa_offsets =
-			nla_data(info->attrs[NL80211_ATTR_CSA_C_OFFSETS_TX]);
-
-		/* check that all the offsets fit the frame */
-		for (i = 0; i < params.n_csa_offsets; i++) {
-			if (params.csa_offsets[i] >= params.len)
-				return -EINVAL;
-		}
-	}
+	err = nl80211_parse_counter_offsets(rdev, NULL, params.len, -1,
+					    info->attrs[NL80211_ATTR_CSA_C_OFFSETS_TX],
+					    &params.csa_offsets,
+					    &params.n_csa_offsets);
+	if (err)
+		return err;
 
 	if (!params.dont_wait_for_ack) {
 		msg = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
@@ -16773,6 +16766,10 @@ static const struct genl_small_ops nl80211_small_ops[] = {
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 		.doit = nl80211_del_station,
 		.flags = GENL_UNS_ADMIN_PERM,
+		/* cannot use NL80211_FLAG_MLO_VALID_LINK_ID, depends on
+		 * whether MAC address is passed or not. If MAC address is
+		 * passed, then even during MLO, link ID is not required.
+		 */
 		.internal_flags = IFLAGS(NL80211_FLAG_NEED_NETDEV_UP),
 	},
 	{
@@ -19825,6 +19822,11 @@ void cfg80211_report_wowlan_wakeup(struct wireless_dev *wdev,
 				 NL80211_WOWLAN_TRIG_WAKEUP_TCP_NOMORETOKENS))
 			goto free_msg;
 
+		if (wakeup->unprot_deauth_disassoc &&
+		    nla_put_flag(msg,
+				 NL80211_WOWLAN_TRIG_UNPROTECTED_DEAUTH_DISASSOC))
+			goto free_msg;
+
 		if (wakeup->packet) {
 			u32 pkt_attr = NL80211_WOWLAN_TRIG_WAKEUP_PKT_80211;
 			u32 len_attr = NL80211_WOWLAN_TRIG_WAKEUP_PKT_80211_LEN;
@@ -20105,9 +20107,26 @@ int cfg80211_external_auth_request(struct net_device *dev,
 	if (!hdr)
 		goto nla_put_failure;
 
+	/* Some historical mistakes in drivers <-> userspace interface (notably
+	 * between drivers and wpa_supplicant) led to a big-endian conversion
+	 * being needed on NL80211_ATTR_AKM_SUITES _only_ when its value is
+	 * WLAN_AKM_SUITE_SAE. This is now fixed on userspace side, but for the
+	 * benefit of older wpa_supplicant versions, send this particular value
+	 * in big-endian. Note that newer wpa_supplicant will also detect this
+	 * particular value in big endian still, so it all continues to work.
+	 */
+	if (params->key_mgmt_suite == WLAN_AKM_SUITE_SAE) {
+		if (nla_put_be32(msg, NL80211_ATTR_AKM_SUITES,
+				 cpu_to_be32(WLAN_AKM_SUITE_SAE)))
+			goto nla_put_failure;
+	} else {
+		if (nla_put_u32(msg, NL80211_ATTR_AKM_SUITES,
+				params->key_mgmt_suite))
+			goto nla_put_failure;
+	}
+
 	if (nla_put_u32(msg, NL80211_ATTR_WIPHY, rdev->wiphy_idx) ||
 	    nla_put_u32(msg, NL80211_ATTR_IFINDEX, dev->ifindex) ||
-	    nla_put_u32(msg, NL80211_ATTR_AKM_SUITES, params->key_mgmt_suite) ||
 	    nla_put_u32(msg, NL80211_ATTR_EXTERNAL_AUTH_ACTION,
 			params->action) ||
 	    nla_put(msg, NL80211_ATTR_BSSID, ETH_ALEN, params->bssid) ||

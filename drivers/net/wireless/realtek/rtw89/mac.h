@@ -406,13 +406,21 @@ enum rtw89_mac_c2h_mcc_func {
 	NUM_OF_RTW89_MAC_C2H_FUNC_MCC,
 };
 
+enum rtw89_mac_c2h_mrc_func {
+	RTW89_MAC_C2H_FUNC_MRC_TSF_RPT = 0,
+	RTW89_MAC_C2H_FUNC_MRC_STATUS_RPT = 1,
+
+	NUM_OF_RTW89_MAC_C2H_FUNC_MRC,
+};
+
 enum rtw89_mac_c2h_class {
-	RTW89_MAC_C2H_CLASS_INFO,
-	RTW89_MAC_C2H_CLASS_OFLD,
-	RTW89_MAC_C2H_CLASS_TWT,
-	RTW89_MAC_C2H_CLASS_WOW,
-	RTW89_MAC_C2H_CLASS_MCC,
-	RTW89_MAC_C2H_CLASS_FWDBG,
+	RTW89_MAC_C2H_CLASS_INFO = 0x0,
+	RTW89_MAC_C2H_CLASS_OFLD = 0x1,
+	RTW89_MAC_C2H_CLASS_TWT = 0x2,
+	RTW89_MAC_C2H_CLASS_WOW = 0x3,
+	RTW89_MAC_C2H_CLASS_MCC = 0x4,
+	RTW89_MAC_C2H_CLASS_FWDBG = 0x5,
+	RTW89_MAC_C2H_CLASS_MRC = 0xe,
 	RTW89_MAC_C2H_CLASS_MAX,
 };
 
@@ -439,6 +447,12 @@ enum rtw89_mac_mcc_status {
 	RTW89_MAC_MCC_SWITCH_CH_FAIL = 25,
 	RTW89_MAC_MCC_TXNULL0_FAIL = 26,
 	RTW89_MAC_MCC_TXNULL1_FAIL = 27,
+};
+
+enum rtw89_mac_mrc_status {
+	RTW89_MAC_MRC_START_SCH_OK = 0,
+	RTW89_MAC_MRC_STOP_SCH_OK = 1,
+	RTW89_MAC_MRC_DEL_SCH_OK = 2,
 };
 
 struct rtw89_mac_ax_coex {
@@ -898,6 +912,7 @@ struct rtw89_mac_gen_def {
 
 	struct rtw89_reg_def muedca_ctrl;
 	struct rtw89_reg_def bfee_ctrl;
+	struct rtw89_reg_def narrow_bw_ru_dis;
 
 	int (*check_mac_en)(struct rtw89_dev *rtwdev, u8 band,
 			    enum rtw89_mac_hwmod_sel sel);
@@ -932,6 +947,7 @@ struct rtw89_mac_gen_def {
 			      const struct rtw89_ple_quota *max_cfg);
 	int (*set_cpuio)(struct rtw89_dev *rtwdev,
 			 struct rtw89_cpuio_ctrl *ctrl_para, bool wd);
+	int (*dle_quota_change)(struct rtw89_dev *rtwdev, bool band1_en);
 
 	void (*disable_cpu)(struct rtw89_dev *rtwdev);
 	int (*fwdl_enable_wcpu)(struct rtw89_dev *rtwdev, u8 boot_reason,
@@ -1388,7 +1404,8 @@ int rtw89_mac_resize_ple_rx_quota(struct rtw89_dev *rtwdev, bool wow);
 int rtw89_mac_ptk_drop_by_band_and_wait(struct rtw89_dev *rtwdev,
 					enum rtw89_mac_idx band);
 void rtw89_mac_hw_mgnt_sec(struct rtw89_dev *rtwdev, bool wow);
-int rtw89_mac_dle_quota_change(struct rtw89_dev *rtwdev, enum rtw89_qta_mode mode);
+int rtw89_mac_dle_quota_change(struct rtw89_dev *rtwdev, enum rtw89_qta_mode mode,
+			       bool band1_en);
 int rtw89_mac_get_dle_rsvd_qt_cfg(struct rtw89_dev *rtwdev,
 				  enum rtw89_mac_dle_rsvd_qt_type type,
 				  struct rtw89_mac_dle_rsvd_qt_cfg *cfg);

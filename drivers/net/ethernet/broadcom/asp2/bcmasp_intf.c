@@ -607,6 +607,7 @@ static void bcmasp_adj_link(struct net_device *dev)
 	struct phy_device *phydev = dev->phydev;
 	u32 cmd_bits = 0, reg;
 	int changed = 0;
+	bool active;
 
 	if (intf->old_link != phydev->link) {
 		changed = 1;
@@ -658,8 +659,8 @@ static void bcmasp_adj_link(struct net_device *dev)
 		reg |= cmd_bits;
 		umac_wl(intf, reg, UMC_CMD);
 
-		intf->eee.eee_active = phy_init_eee(phydev, 0) >= 0;
-		bcmasp_eee_enable_set(intf, intf->eee.eee_active);
+		active = phy_init_eee(phydev, 0) >= 0;
+		bcmasp_eee_enable_set(intf, active);
 	}
 
 	reg = rgmii_rl(intf, RGMII_OOB_CNTRL);
@@ -684,6 +685,8 @@ static int bcmasp_init_rx(struct bcmasp_intf *intf)
 
 	intf->rx_buf_order = get_order(RING_BUFFER_SIZE);
 	buffer_pg = alloc_pages(GFP_KERNEL, intf->rx_buf_order);
+	if (!buffer_pg)
+		return -ENOMEM;
 
 	dma = dma_map_page(kdev, buffer_pg, 0, RING_BUFFER_SIZE,
 			   DMA_FROM_DEVICE);
@@ -1092,6 +1095,7 @@ static int bcmasp_netif_init(struct net_device *dev, bool phy_connect)
 	return 0;
 
 err_reclaim_tx:
+	netif_napi_del(&intf->tx_napi);
 	bcmasp_reclaim_free_all_tx(intf);
 err_phy_disconnect:
 	if (phydev)

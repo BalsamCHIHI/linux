@@ -720,7 +720,7 @@ static int iwl_mvm_d3_reprogram(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 	struct ieee80211_chanctx_conf *ctx;
 	u8 chains_static, chains_dynamic;
-	struct cfg80211_chan_def chandef;
+	struct cfg80211_chan_def chandef, ap_def;
 	int ret, i;
 	struct iwl_binding_cmd_v1 binding_cmd = {};
 	struct iwl_time_quota_cmd quota_cmd = {};
@@ -742,12 +742,13 @@ static int iwl_mvm_d3_reprogram(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		return -EINVAL;
 	}
 	chandef = ctx->def;
+	ap_def = ctx->ap;
 	chains_static = ctx->rx_chains_static;
 	chains_dynamic = ctx->rx_chains_dynamic;
 	rcu_read_unlock();
 
 	ret = iwl_mvm_phy_ctxt_add(mvm, mvmvif->deflink.phy_ctxt, &chandef,
-				   chains_static, chains_dynamic);
+				   &ap_def, chains_static, chains_dynamic);
 	if (ret)
 		return ret;
 
@@ -924,6 +925,9 @@ iwl_mvm_get_wowlan_config(struct iwl_mvm *mvm,
 					ap_sta->deflink.ht_cap.ht_supported;
 	wowlan_config_cmd->flags = ENABLE_L3_FILTERING |
 		ENABLE_NBNS_FILTERING | ENABLE_DHCP_FILTERING;
+
+	if (ap_sta->mfp)
+		wowlan_config_cmd->flags |= IS_11W_ASSOC;
 
 	if (iwl_fw_lookup_cmd_ver(mvm->fw, WOWLAN_CONFIGURATION, 0) < 6) {
 		/* Query the last used seqno and set it */
@@ -1286,8 +1290,10 @@ static int __iwl_mvm_suspend(struct ieee80211_hw *hw,
 	mvmvif = iwl_mvm_vif_from_mac80211(vif);
 
 	mvm_link = mvmvif->link[primary_link];
-	if (WARN_ON_ONCE(!mvm_link))
-		return -EINVAL;
+	if (WARN_ON_ONCE(!mvm_link)) {
+		ret = -EINVAL;
+		goto out_noreset;
+	}
 
 	if (mvm_link->ap_sta_id == IWL_MVM_INVALID_STA) {
 		/* if we're not associated, this must be netdetect */
@@ -1510,6 +1516,9 @@ static void iwl_mvm_report_wakeup_reasons(struct iwl_mvm *mvm,
 
 	if (reasons & IWL_WOWLAN_WAKEUP_BY_REM_WAKE_WAKEUP_PACKET)
 		wakeup.tcp_match = true;
+
+	if (reasons & IWL_WAKEUP_BY_11W_UNPROTECTED_DEAUTH_OR_DISASSOC)
+		wakeup.unprot_deauth_disassoc = true;
 
 	if (status->wake_packet) {
 		int pktsize = status->wake_packet_bufsize;
@@ -2991,7 +3000,7 @@ static void iwl_mvm_nd_match_info_handler(struct iwl_mvm *mvm,
 
 	if (results->matched_profiles) {
 		memcpy(results->matches, notif->matches, matches_len);
-		d3_data->nd_results_valid = TRUE;
+		d3_data->nd_results_valid = true;
 	}
 
 	/* no scan should be active at this point */

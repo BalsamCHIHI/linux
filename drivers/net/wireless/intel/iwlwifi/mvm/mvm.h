@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2012-2014, 2018-2023 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2024 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -106,6 +106,7 @@ struct iwl_mvm_phy_ctxt {
 	/* track for RLC config command */
 	u32 center_freq1;
 	bool rlc_disabled;
+	u32 channel_load_by_us;
 };
 
 struct iwl_mvm_time_event_data {
@@ -540,8 +541,8 @@ struct iwl_mvm_tt_mgmt {
 
 #ifdef CONFIG_THERMAL
 /**
- *struct iwl_mvm_thermal_device - thermal zone related data
- * @temp_trips: temperature thresholds for report
+ * struct iwl_mvm_thermal_device - thermal zone related data
+ * @trips: temperature thresholds for report
  * @fw_trips_index: keep indexes to original array - temp_trips
  * @tzone: thermal zone device data
 */
@@ -1221,7 +1222,6 @@ struct iwl_mvm {
  * @IWL_MVM_STATUS_IN_HW_RESTART: HW restart is active
  * @IWL_MVM_STATUS_ROC_AUX_RUNNING: AUX remain-on-channel is running
  * @IWL_MVM_STATUS_FIRMWARE_RUNNING: firmware is running
- * @IWL_MVM_STATUS_NEED_FLUSH_P2P: need to flush P2P bcast STA
  * @IWL_MVM_STATUS_IN_D3: in D3 (or at least about to go into it)
  * @IWL_MVM_STATUS_SUPPRESS_ERROR_LOG_ONCE: suppress one error log
  *	if this is set, when intentionally triggered
@@ -1236,7 +1236,6 @@ enum iwl_mvm_status {
 	IWL_MVM_STATUS_IN_HW_RESTART,
 	IWL_MVM_STATUS_ROC_AUX_RUNNING,
 	IWL_MVM_STATUS_FIRMWARE_RUNNING,
-	IWL_MVM_STATUS_NEED_FLUSH_P2P,
 	IWL_MVM_STATUS_IN_D3,
 	IWL_MVM_STATUS_SUPPRESS_ERROR_LOG_ONCE,
 	IWL_MVM_STATUS_STARTING,
@@ -1812,9 +1811,11 @@ void iwl_mvm_rx_shared_mem_cfg_notif(struct iwl_mvm *mvm,
 struct iwl_mvm_phy_ctxt *iwl_mvm_get_free_phy_ctxt(struct iwl_mvm *mvm);
 int iwl_mvm_phy_ctxt_add(struct iwl_mvm *mvm, struct iwl_mvm_phy_ctxt *ctxt,
 			 const struct cfg80211_chan_def *chandef,
+			 const struct cfg80211_chan_def *ap,
 			 u8 chains_static, u8 chains_dynamic);
 int iwl_mvm_phy_ctxt_changed(struct iwl_mvm *mvm, struct iwl_mvm_phy_ctxt *ctxt,
 			     const struct cfg80211_chan_def *chandef,
+			     const struct cfg80211_chan_def *ap,
 			     u8 chains_static, u8 chains_dynamic);
 void iwl_mvm_phy_ctxt_ref(struct iwl_mvm *mvm,
 			  struct iwl_mvm_phy_ctxt *ctxt);
