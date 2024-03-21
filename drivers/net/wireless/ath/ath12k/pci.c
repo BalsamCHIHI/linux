@@ -1505,6 +1505,7 @@ static void ath12k_pci_remove(struct pci_dev *pdev)
 	if (test_bit(ATH12K_FLAG_QMI_FAIL, &ab->dev_flags)) {
 		ath12k_pci_power_down(ab);
 		ath12k_qmi_deinit_service(ab);
+		ath12k_fw_unmap(ab);
 		goto qmi_fail;
 	}
 
