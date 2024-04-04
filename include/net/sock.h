@@ -1759,6 +1759,13 @@ static inline void sock_owned_by_me(const struct sock *sk)
 #endif
 }
 
+static inline void sock_not_owned_by_me(const struct sock *sk)
+{
+#ifdef CONFIG_LOCKDEP
+	WARN_ON_ONCE(lockdep_sock_is_held(sk) && debug_locks);
+#endif
+}
+
 static inline bool sock_owned_by_user(const struct sock *sk)
 {
 	sock_owned_by_me(sk);
@@ -2504,6 +2511,12 @@ static inline void sk_wake_async(const struct sock *sk, int how, int band)
 		sock_wake_async(rcu_dereference(sk->sk_wq), how, band);
 		rcu_read_unlock();
 	}
+}
+
+static inline void sk_wake_async_rcu(const struct sock *sk, int how, int band)
+{
+	if (unlikely(sock_flag(sk, SOCK_FASYNC)))
+		sock_wake_async(rcu_dereference(sk->sk_wq), how, band);
 }
 
 /* Since sk_{r,w}mem_alloc sums skb->truesize, even a small frame might

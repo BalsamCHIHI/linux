@@ -839,7 +839,7 @@ out:
 void store_trace_entry_data(void *edata, struct trace_probe *tp, struct pt_regs *regs)
 {
 	struct probe_entry_arg *earg = tp->entry_arg;
-	unsigned long val;
+	unsigned long val = 0;
 	int i;
 
 	if (!earg)
@@ -1179,8 +1179,6 @@ parse_probe_arg(char *arg, const struct fetch_type *type,
 	}
 	return ret;
 }
-
-#define BYTES_TO_BITS(nb)	((BITS_PER_LONG * (nb)) / sizeof(long))
 
 /* Bitfield type needs to be parsed into a fetch function */
 static int __parse_bitfield_probe_arg(const char *bf,
