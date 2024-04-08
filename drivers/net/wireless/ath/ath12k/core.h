@@ -453,6 +453,10 @@ struct ath12k_fw_stats {
 	struct list_head bcn;
 };
 
+struct ath12k_debug {
+	struct dentry *debugfs_pdev;
+};
+
 struct ath12k_per_peer_tx_stats {
 	u32 succ_bytes;
 	u32 retry_bytes;
@@ -592,6 +596,9 @@ struct ath12k {
 	struct ath12k_per_peer_tx_stats cached_stats;
 	u32 last_ppdu_id;
 	u32 cached_ppdu_id;
+#ifdef CONFIG_ATH12K_DEBUGFS
+	struct ath12k_debug debug;
+#endif
 
 	bool dfs_block_radar_events;
 	bool monitor_conf_enabled;
@@ -688,6 +695,21 @@ struct ath12k_soc_dp_stats {
 	struct ath12k_soc_dp_tx_err_stats tx_err;
 };
 
+/**
+ * enum ath12k_link_capable_flags - link capable flags
+ *
+ * Single/Multi link capability information
+ *
+ * @ATH12K_INTRA_DEVICE_MLO_SUPPORT: SLO/MLO form between the radio, where all
+ *	the links (radios) present within a device.
+ * @ATH12K_INTER_DEVICE_MLO_SUPPORT: SLO/MLO form between the radio, where all
+ *	the links (radios) present across the devices.
+ */
+enum ath12k_link_capable_flags {
+	ATH12K_INTRA_DEVICE_MLO_SUPPORT	= BIT(0),
+	ATH12K_INTER_DEVICE_MLO_SUPPORT	= BIT(1),
+};
+
 /* Master structure to hold the hw data which may be used in core module */
 struct ath12k_base {
 	enum ath12k_hw_rev hw_rev;
@@ -782,6 +804,9 @@ struct ath12k_base {
 	/* Current DFS Regulatory */
 	enum ath12k_dfs_region dfs_region;
 	struct ath12k_soc_dp_stats soc_stats;
+#ifdef CONFIG_ATH12K_DEBUGFS
+	struct dentry *debugfs_soc;
+#endif
 
 	unsigned long dev_flags;
 	struct completion driver_recovery;
@@ -843,10 +868,12 @@ struct ath12k_base {
 
 	const struct hal_rx_ops *hal_rx_ops;
 
-	/* slo_capable denotes if the single/multi link operation
-	 * is supported within the same chip (SoC).
+	/* mlo_capable_flags denotes the single/multi link operation
+	 * capabilities of the Device.
+	 *
+	 * See enum ath12k_link_capable_flags
 	 */
-	bool slo_capable;
+	u8 mlo_capable_flags;
 
 	/* must be last */
 	u8 drv_priv[] __aligned(sizeof(void *));
