@@ -123,8 +123,6 @@ int ath12k_dp_rx_bufs_replenish(struct ath12k_base *ab,
 int ath12k_dp_rx_pdev_mon_attach(struct ath12k *ar);
 int ath12k_dp_rx_peer_frag_setup(struct ath12k *ar, const u8 *peer_mac, int vdev_id);
 
-int ath12k_dp_rx_pktlog_start(struct ath12k_base *ab);
-int ath12k_dp_rx_pktlog_stop(struct ath12k_base *ab, bool stop_timer);
 u8 ath12k_dp_rx_h_l3pad(struct ath12k_base *ab,
 			struct hal_rx_desc *desc);
 struct ath12k_peer *
