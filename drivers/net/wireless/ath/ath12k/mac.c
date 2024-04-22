@@ -329,6 +329,122 @@ static const char *ath12k_mac_phymode_str(enum wmi_phy_mode mode)
 	return "<unknown>";
 }
 
+enum nl80211_he_ru_alloc ath12k_mac_he_ru_tones_to_nl80211_he_ru_alloc(u16 ru_tones)
+{
+	enum nl80211_he_ru_alloc ret;
+
+	switch (ru_tones) {
+	case 26:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_26;
+		break;
+	case 52:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_52;
+		break;
+	case 106:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_106;
+		break;
+	case 242:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_242;
+		break;
+	case 484:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_484;
+		break;
+	case 996:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_996;
+		break;
+	case (996 * 2):
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_2x996;
+		break;
+	default:
+		ret = NL80211_RATE_INFO_HE_RU_ALLOC_26;
+		break;
+	}
+
+	return ret;
+}
+
+enum nl80211_eht_gi ath12k_mac_eht_gi_to_nl80211_eht_gi(u8 sgi)
+{
+	enum nl80211_eht_gi ret;
+
+	switch (sgi) {
+	case RX_MSDU_START_SGI_0_8_US:
+		ret = NL80211_RATE_INFO_EHT_GI_0_8;
+		break;
+	case RX_MSDU_START_SGI_1_6_US:
+		ret = NL80211_RATE_INFO_EHT_GI_1_6;
+		break;
+	case RX_MSDU_START_SGI_3_2_US:
+		ret = NL80211_RATE_INFO_EHT_GI_3_2;
+		break;
+	default:
+		ret = NL80211_RATE_INFO_EHT_GI_0_8;
+		break;
+	}
+
+	return ret;
+}
+
+enum nl80211_eht_ru_alloc ath12k_mac_eht_ru_tones_to_nl80211_eht_ru_alloc(u16 ru_tones)
+{
+	enum nl80211_eht_ru_alloc ret;
+
+	switch (ru_tones) {
+	case 26:
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_26;
+		break;
+	case 52:
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_52;
+		break;
+	case (52 + 26):
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_52P26;
+		break;
+	case 106:
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_106;
+		break;
+	case (106 + 26):
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_106P26;
+		break;
+	case 242:
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_242;
+		break;
+	case 484:
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_484;
+		break;
+	case (484 + 242):
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_484P242;
+		break;
+	case 996:
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_996;
+		break;
+	case (996 + 484):
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_996P484;
+		break;
+	case (996 + 484 + 242):
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_996P484P242;
+		break;
+	case (2 * 996):
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_2x996;
+		break;
+	case (2 * 996 + 484):
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_2x996P484;
+		break;
+	case (3 * 996):
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_3x996;
+		break;
+	case (3 * 996 + 484):
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_3x996P484;
+		break;
+	case (4 * 996):
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_4x996;
+		break;
+	default:
+		ret = NL80211_RATE_INFO_EHT_RU_ALLOC_26;
+	}
+
+	return ret;
+}
+
 enum rate_info_bw
 ath12k_mac_bw_to_mac80211_bw(enum ath12k_supported_bw bw)
 {
@@ -1398,6 +1514,75 @@ static void ath12k_control_beaconing(struct ath12k_vif *arvif,
 	ath12k_dbg(ar->ab, ATH12K_DBG_MAC, "mac vdev %d up\n", arvif->vdev_id);
 }
 
+static void ath12k_mac_handle_beacon_iter(void *data, u8 *mac,
+					  struct ieee80211_vif *vif)
+{
+	struct sk_buff *skb = data;
+	struct ieee80211_mgmt *mgmt = (void *)skb->data;
+	struct ath12k_vif *arvif = ath12k_vif_to_arvif(vif);
+
+	if (vif->type != NL80211_IFTYPE_STATION)
+		return;
+
+	if (!ether_addr_equal(mgmt->bssid, vif->bss_conf.bssid))
+		return;
+
+	cancel_delayed_work(&arvif->connection_loss_work);
+}
+
+void ath12k_mac_handle_beacon(struct ath12k *ar, struct sk_buff *skb)
+{
+	ieee80211_iterate_active_interfaces_atomic(ath12k_ar_to_hw(ar),
+						   IEEE80211_IFACE_ITER_NORMAL,
+						   ath12k_mac_handle_beacon_iter,
+						   skb);
+}
+
+static void ath12k_mac_handle_beacon_miss_iter(void *data, u8 *mac,
+					       struct ieee80211_vif *vif)
+{
+	u32 *vdev_id = data;
+	struct ath12k_vif *arvif = ath12k_vif_to_arvif(vif);
+	struct ath12k *ar = arvif->ar;
+	struct ieee80211_hw *hw = ath12k_ar_to_hw(ar);
+
+	if (arvif->vdev_id != *vdev_id)
+		return;
+
+	if (!arvif->is_up)
+		return;
+
+	ieee80211_beacon_loss(vif);
+
+	/* Firmware doesn't report beacon loss events repeatedly. If AP probe
+	 * (done by mac80211) succeeds but beacons do not resume then it
+	 * doesn't make sense to continue operation. Queue connection loss work
+	 * which can be cancelled when beacon is received.
+	 */
+	ieee80211_queue_delayed_work(hw, &arvif->connection_loss_work,
+				     ATH12K_CONNECTION_LOSS_HZ);
+}
+
+void ath12k_mac_handle_beacon_miss(struct ath12k *ar, u32 vdev_id)
+{
+	ieee80211_iterate_active_interfaces_atomic(ath12k_ar_to_hw(ar),
+						   IEEE80211_IFACE_ITER_NORMAL,
+						   ath12k_mac_handle_beacon_miss_iter,
+						   &vdev_id);
+}
+
+static void ath12k_mac_vif_sta_connection_loss_work(struct work_struct *work)
+{
+	struct ath12k_vif *arvif = container_of(work, struct ath12k_vif,
+						connection_loss_work.work);
+	struct ieee80211_vif *vif = arvif->vif;
+
+	if (!arvif->is_up)
+		return;
+
+	ieee80211_connection_loss(vif);
+}
+
 static void ath12k_peer_assoc_h_basic(struct ath12k *ar,
 				      struct ieee80211_vif *vif,
 				      struct ieee80211_sta *sta,
@@ -2418,7 +2603,11 @@ static void ath12k_peer_assoc_prepare(struct ath12k *ar,
 				      struct ath12k_wmi_peer_assoc_arg *arg,
 				      bool reassoc)
 {
+	struct ath12k_sta *arsta;
+
 	lockdep_assert_held(&ar->conf_mutex);
+
+	arsta = ath12k_sta_to_arsta(sta);
 
 	memset(arg, 0, sizeof(*arg));
 
@@ -2435,6 +2624,8 @@ static void ath12k_peer_assoc_prepare(struct ath12k *ar,
 	ath12k_peer_assoc_h_qos(ar, vif, sta, arg);
 	ath12k_peer_assoc_h_phymode(ar, vif, sta, arg);
 	ath12k_peer_assoc_h_smps(sta, arg);
+
+	arsta->peer_nss = arg->peer_nss;
 
 	/* TODO: amsdu_disable req? */
 }
@@ -2570,7 +2761,7 @@ static void ath12k_bss_disassoc(struct ath12k *ar,
 
 	arvif->is_up = false;
 
-	/* TODO: cancel connection_loss_work */
+	cancel_delayed_work(&arvif->connection_loss_work);
 }
 
 static u32 ath12k_mac_get_rate_hw_value(int bitrate)
@@ -6317,6 +6508,8 @@ static int ath12k_mac_op_add_interface(struct ieee80211_hw *hw,
 	arvif->vif = vif;
 
 	INIT_LIST_HEAD(&arvif->list);
+	INIT_DELAYED_WORK(&arvif->connection_loss_work,
+			  ath12k_mac_vif_sta_connection_loss_work);
 
 	for (i = 0; i < ARRAY_SIZE(arvif->bitrate_mask.control); i++) {
 		arvif->bitrate_mask.control[i].legacy = 0xffffffff;
@@ -6448,6 +6641,8 @@ static void ath12k_mac_op_remove_interface(struct ieee80211_hw *hw,
 
 	ar = arvif->ar;
 	ab = ar->ab;
+
+	cancel_delayed_work_sync(&arvif->connection_loss_work);
 
 	mutex_lock(&ar->conf_mutex);
 
@@ -7417,22 +7612,38 @@ static int ath12k_mac_op_set_frag_threshold(struct ieee80211_hw *hw, u32 value)
 	return -EOPNOTSUPP;
 }
 
-static void ath12k_mac_flush(struct ath12k *ar)
+static int ath12k_mac_flush(struct ath12k *ar)
 {
 	long time_left;
+	int ret = 0;
 
 	time_left = wait_event_timeout(ar->dp.tx_empty_waitq,
 				       (atomic_read(&ar->dp.num_tx_pending) == 0),
 				       ATH12K_FLUSH_TIMEOUT);
-	if (time_left == 0)
-		ath12k_warn(ar->ab, "failed to flush transmit queue %ld\n", time_left);
+	if (time_left == 0) {
+		ath12k_warn(ar->ab,
+			    "failed to flush transmit queue, data pkts pending %d\n",
+			    atomic_read(&ar->dp.num_tx_pending));
+		ret = -ETIMEDOUT;
+	}
 
 	time_left = wait_event_timeout(ar->txmgmt_empty_waitq,
 				       (atomic_read(&ar->num_pending_mgmt_tx) == 0),
 				       ATH12K_FLUSH_TIMEOUT);
-	if (time_left == 0)
-		ath12k_warn(ar->ab, "failed to flush mgmt transmit queue %ld\n",
-			    time_left);
+	if (time_left == 0) {
+		ath12k_warn(ar->ab,
+			    "failed to flush mgmt transmit queue, mgmt pkts pending %d\n",
+			    atomic_read(&ar->num_pending_mgmt_tx));
+		ret = -ETIMEDOUT;
+	}
+
+	return ret;
+}
+
+int ath12k_mac_wait_tx_complete(struct ath12k *ar)
+{
+	ath12k_mac_drain_tx(ar);
+	return ath12k_mac_flush(ar);
 }
 
 static void ath12k_mac_op_flush(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
@@ -7959,12 +8170,52 @@ static int ath12k_mac_op_get_survey(struct ieee80211_hw *hw, int idx,
 	return 0;
 }
 
+static int ath12k_mac_get_fw_stats(struct ath12k *ar, u32 pdev_id,
+				   u32 vdev_id, u32 stats_id)
+{
+	struct ath12k_base *ab = ar->ab;
+	int ret, left;
+
+	mutex_lock(&ar->conf_mutex);
+
+	if (ar->state != ATH12K_STATE_ON) {
+		ret = -ENETDOWN;
+		goto err_unlock;
+	}
+
+	reinit_completion(&ar->fw_stats_complete);
+
+	ret = ath12k_wmi_send_stats_request_cmd(ar, stats_id, vdev_id, pdev_id);
+
+	if (ret) {
+		ath12k_warn(ab, "failed to request fw stats: %d\n", ret);
+		goto err_unlock;
+	}
+
+	ath12k_dbg(ab, ATH12K_DBG_WMI,
+		   "get fw stat pdev id %d vdev id %d stats id 0x%x\n",
+		   pdev_id, vdev_id, stats_id);
+
+	left = wait_for_completion_timeout(&ar->fw_stats_complete, 1 * HZ);
+
+	if (!left)
+		ath12k_warn(ab, "time out while waiting for get fw stats\n");
+err_unlock:
+
+	mutex_unlock(&ar->conf_mutex);
+	return ret;
+}
+
 static void ath12k_mac_op_sta_statistics(struct ieee80211_hw *hw,
 					 struct ieee80211_vif *vif,
 					 struct ieee80211_sta *sta,
 					 struct station_info *sinfo)
 {
 	struct ath12k_sta *arsta = ath12k_sta_to_arsta(sta);
+	struct ath12k *ar = arsta->arvif->ar;
+	s8 signal;
+	bool db2dbm = test_bit(WMI_TLV_SERVICE_HW_DB2DBM_CONVERSION_SUPPORT,
+			       ar->ab->wmi_ab.svc_map);
 
 	sinfo->rx_duration = arsta->rx_duration;
 	sinfo->filled |= BIT_ULL(NL80211_STA_INFO_RX_DURATION);
@@ -7984,13 +8235,25 @@ static void ath12k_mac_op_sta_statistics(struct ieee80211_hw *hw,
 		sinfo->txrate.he_gi = arsta->txrate.he_gi;
 		sinfo->txrate.he_dcm = arsta->txrate.he_dcm;
 		sinfo->txrate.he_ru_alloc = arsta->txrate.he_ru_alloc;
+		sinfo->txrate.eht_gi = arsta->txrate.eht_gi;
+		sinfo->txrate.eht_ru_alloc = arsta->txrate.eht_ru_alloc;
 	}
 	sinfo->txrate.flags = arsta->txrate.flags;
 	sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_BITRATE);
 
 	/* TODO: Use real NF instead of default one. */
-	sinfo->signal = arsta->rssi_comb + ATH12K_DEFAULT_NOISE_FLOOR;
-	sinfo->filled |= BIT_ULL(NL80211_STA_INFO_SIGNAL);
+	signal = arsta->rssi_comb;
+
+	if (!signal &&
+	    arsta->arvif->vdev_type == WMI_VDEV_TYPE_STA &&
+	    !(ath12k_mac_get_fw_stats(ar, ar->pdev->pdev_id, 0,
+				      WMI_REQUEST_VDEV_STAT)))
+		signal = arsta->rssi_beacon;
+
+	if (signal) {
+		sinfo->signal = db2dbm ? signal : signal + ATH12K_DEFAULT_NOISE_FLOOR;
+		sinfo->filled |= BIT_ULL(NL80211_STA_INFO_SIGNAL);
+	}
 }
 
 static int ath12k_mac_op_cancel_remain_on_channel(struct ieee80211_hw *hw,
@@ -8681,6 +8944,8 @@ static int ath12k_mac_hw_register(struct ath12k_hw *ah)
 	}
 
 	ath12k_debugfs_register(ar);
+
+	init_completion(&ar->fw_stats_complete);
 
 	return 0;
 
