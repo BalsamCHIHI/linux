@@ -47,6 +47,7 @@
 #define ATH12K_SMBIOS_BDF_EXT_MAGIC "BDF_"
 
 #define ATH12K_INVALID_HW_MAC_ID	0xFF
+#define ATH12K_CONNECTION_LOSS_HZ	(3 * HZ)
 #define	ATH12K_RX_RATE_TABLE_NUM	320
 #define	ATH12K_RX_RATE_TABLE_11AX_NUM	576
 
@@ -74,6 +75,7 @@ enum wme_ac {
 #define ATH12K_HT_MCS_MAX	7
 #define ATH12K_VHT_MCS_MAX	9
 #define ATH12K_HE_MCS_MAX	11
+#define ATH12K_EHT_MCS_MAX	15
 
 enum ath12k_crypt_mode {
 	/* Only use hardware crypto engine */
@@ -276,6 +278,7 @@ struct ath12k_vif {
 	u32 aid;
 	u8 bssid[ETH_ALEN];
 	struct cfg80211_bitrate_mask bitrate_mask;
+	struct delayed_work connection_loss_work;
 	int num_legacy_stations;
 	int rtscts_prot_mode;
 	int txpower;
@@ -447,6 +450,8 @@ struct ath12k_sta {
 	struct ath12k_rx_peer_stats *rx_stats;
 	struct ath12k_wbm_tx_stats *wbm_tx_stats;
 	u32 bw_prev;
+	u32 peer_nss;
+	s8 rssi_beacon;
 };
 
 #define ATH12K_MIN_5G_FREQ 4150
@@ -630,6 +635,8 @@ struct ath12k {
 
 	u32 freq_low;
 	u32 freq_high;
+
+	struct completion fw_stats_complete;
 };
 
 struct ath12k_hw {
