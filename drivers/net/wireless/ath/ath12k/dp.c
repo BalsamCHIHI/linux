@@ -616,6 +616,7 @@ static int ath12k_dp_scatter_idle_link_desc_setup(struct ath12k_base *ab,
 	int i;
 	int ret = 0;
 	u32 end_offset, cookie;
+	enum hal_rx_buf_return_buf_manager rbm = dp->idle_link_rbm;
 
 	n_entries_per_buf = HAL_WBM_IDLE_SCATTER_BUF_SIZE /
 		ath12k_hal_srng_get_entrysize(ab, HAL_WBM_IDLE_LINK);
@@ -646,7 +647,8 @@ static int ath12k_dp_scatter_idle_link_desc_setup(struct ath12k_base *ab,
 		paddr = link_desc_banks[i].paddr;
 		while (n_entries) {
 			cookie = DP_LINK_DESC_COOKIE_SET(n_entries, i);
-			ath12k_hal_set_link_desc_addr(scatter_buf, cookie, paddr);
+			ath12k_hal_set_link_desc_addr(scatter_buf, cookie,
+						      paddr, rbm);
 			n_entries--;
 			paddr += HAL_LINK_DESC_SIZE;
 			if (rem_entries) {
@@ -790,6 +792,7 @@ int ath12k_dp_link_desc_setup(struct ath12k_base *ab,
 	u32 paddr;
 	int i, ret;
 	u32 cookie;
+	enum hal_rx_buf_return_buf_manager rbm = ab->dp.idle_link_rbm;
 
 	tot_mem_sz = n_link_desc * HAL_LINK_DESC_SIZE;
 	tot_mem_sz += HAL_LINK_DESC_ALIGN;
@@ -850,8 +853,7 @@ int ath12k_dp_link_desc_setup(struct ath12k_base *ab,
 		while (n_entries &&
 		       (desc = ath12k_hal_srng_src_get_next_entry(ab, srng))) {
 			cookie = DP_LINK_DESC_COOKIE_SET(n_entries, i);
-			ath12k_hal_set_link_desc_addr(desc,
-						      cookie, paddr);
+			ath12k_hal_set_link_desc_addr(desc, cookie, paddr, rbm);
 			n_entries--;
 			paddr += HAL_LINK_DESC_SIZE;
 		}
@@ -1587,6 +1589,24 @@ static int ath12k_dp_reoq_lut_setup(struct ath12k_base *ab)
 	return 0;
 }
 
+static enum hal_rx_buf_return_buf_manager
+ath12k_dp_get_idle_link_rbm(struct ath12k_base *ab)
+{
+	switch (ab->device_id) {
+	case 0:
+		return HAL_RX_BUF_RBM_WBM_DEV0_IDLE_DESC_LIST;
+	case 1:
+		return HAL_RX_BUF_RBM_WBM_DEV1_IDLE_DESC_LIST;
+	case 2:
+		return HAL_RX_BUF_RBM_WBM_DEV2_IDLE_DESC_LIST;
+	default:
+		ath12k_warn(ab, "invalid %d device id, so choose default rbm\n",
+			    ab->device_id);
+		WARN_ON(1);
+		return HAL_RX_BUF_RBM_WBM_DEV0_IDLE_DESC_LIST;
+	}
+}
+
 int ath12k_dp_alloc(struct ath12k_base *ab)
 {
 	struct ath12k_dp *dp = &ab->dp;
@@ -1603,6 +1623,7 @@ int ath12k_dp_alloc(struct ath12k_base *ab)
 	spin_lock_init(&dp->reo_cmd_lock);
 
 	dp->reo_cmd_cache_flush_count = 0;
+	dp->idle_link_rbm = ath12k_dp_get_idle_link_rbm(ab);
 
 	ret = ath12k_wbm_idle_ring_setup(ab, &n_link_desc);
 	if (ret) {

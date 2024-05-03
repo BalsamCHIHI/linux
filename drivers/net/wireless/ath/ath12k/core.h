@@ -457,12 +457,12 @@ struct ath12k_sta {
 #define ATH12K_NUM_CHANS 100
 #define ATH12K_MAX_5G_CHAN 173
 
-enum ath12k_state {
-	ATH12K_STATE_OFF,
-	ATH12K_STATE_ON,
-	ATH12K_STATE_RESTARTING,
-	ATH12K_STATE_RESTARTED,
-	ATH12K_STATE_WEDGED,
+enum ath12k_hw_state {
+	ATH12K_HW_STATE_OFF,
+	ATH12K_HW_STATE_ON,
+	ATH12K_HW_STATE_RESTARTING,
+	ATH12K_HW_STATE_RESTARTED,
+	ATH12K_HW_STATE_WEDGED,
 	/* Add other states as required */
 };
 
@@ -511,7 +511,6 @@ struct ath12k {
 	u32 ht_cap_info;
 	u32 vht_cap_info;
 	struct ath12k_he ar_he;
-	enum ath12k_state state;
 	bool supports_6ghz;
 	struct {
 		struct completion started;
@@ -636,10 +635,18 @@ struct ath12k {
 
 struct ath12k_hw {
 	struct ieee80211_hw *hw;
+	struct ath12k_base *ab;
+
+	/* Protect the write operation of the hardware state ath12k_hw::state
+	 * between hardware start<=>reconfigure<=>stop transitions.
+	 */
+	struct mutex hw_mutex;
+	enum ath12k_hw_state state;
 	bool regd_updated;
 	bool use_6ghz_regd;
-
 	u8 num_radio;
+
+	/* Keep last */
 	struct ath12k radio[] __aligned(sizeof(void *));
 };
 
@@ -747,6 +754,7 @@ struct ath12k_base {
 	struct ath12k_qmi qmi;
 	struct ath12k_wmi_base wmi_ab;
 	struct completion fw_ready;
+	u8 device_id;
 	int num_radios;
 	/* HW channel counters frequency value in hertz common to all MACs */
 	u32 cc_freq_hz;
@@ -1035,6 +1043,11 @@ static inline struct ath12k *ath12k_ah_to_ar(struct ath12k_hw *ah, u8 hw_link_id
 		hw_link_id = 0;
 
 	return &ah->radio[hw_link_id];
+}
+
+static inline struct ath12k_hw *ath12k_ar_to_ah(struct ath12k *ar)
+{
+	return ar->ah;
 }
 
 static inline struct ieee80211_hw *ath12k_ar_to_hw(struct ath12k *ar)

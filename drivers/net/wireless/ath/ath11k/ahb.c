@@ -198,12 +198,30 @@ static const struct ath11k_pci_ops ath11k_ahb_pci_ops_wcn6750 = {
 
 static inline u32 ath11k_ahb_read32(struct ath11k_base *ab, u32 offset)
 {
-	return ioread32(ab->mem + offset);
+	switch (offset & ATH11K_REG_TYPE_MASK) {
+	case ATH11K_REG_TYPE_NORMAL:
+		return ioread32(ab->mem + FIELD_GET(ATH11K_REG_OFFSET_MASK, offset));
+	case ATH11K_REG_TYPE_CE:
+		return ioread32(ab->mem_ce + FIELD_GET(ATH11K_REG_OFFSET_MASK, offset));
+	default:
+		BUG();
+		return 0;
+	}
 }
 
 static inline void ath11k_ahb_write32(struct ath11k_base *ab, u32 offset, u32 value)
 {
-	iowrite32(value, ab->mem + offset);
+	switch (offset & ATH11K_REG_TYPE_MASK) {
+	case ATH11K_REG_TYPE_NORMAL:
+		iowrite32(value, ab->mem + FIELD_GET(ATH11K_REG_OFFSET_MASK, offset));
+		break;
+	case ATH11K_REG_TYPE_CE:
+		iowrite32(value, ab->mem_ce + FIELD_GET(ATH11K_REG_OFFSET_MASK, offset));
+		break;
+	default:
+		BUG();
+		break;
+	}
 }
 
 static void ath11k_ahb_kill_tasklets(struct ath11k_base *ab)
@@ -275,9 +293,9 @@ static void ath11k_ahb_ce_irq_enable(struct ath11k_base *ab, u16 ce_id)
 	const struct ce_ie_addr *ce_ie_addr = ab->hw_params.ce_ie_addr;
 	u32 ie1_reg_addr, ie2_reg_addr, ie3_reg_addr;
 
-	ie1_reg_addr = ce_ie_addr->ie1_reg_addr + ATH11K_CE_OFFSET(ab);
-	ie2_reg_addr = ce_ie_addr->ie2_reg_addr + ATH11K_CE_OFFSET(ab);
-	ie3_reg_addr = ce_ie_addr->ie3_reg_addr + ATH11K_CE_OFFSET(ab);
+	ie1_reg_addr = ce_ie_addr->ie1_reg_addr;
+	ie2_reg_addr = ce_ie_addr->ie2_reg_addr;
+	ie3_reg_addr = ce_ie_addr->ie3_reg_addr;
 
 	ce_attr = &ab->hw_params.host_ce_config[ce_id];
 	if (ce_attr->src_nentries)
@@ -296,9 +314,9 @@ static void ath11k_ahb_ce_irq_disable(struct ath11k_base *ab, u16 ce_id)
 	const struct ce_ie_addr *ce_ie_addr = ab->hw_params.ce_ie_addr;
 	u32 ie1_reg_addr, ie2_reg_addr, ie3_reg_addr;
 
-	ie1_reg_addr = ce_ie_addr->ie1_reg_addr + ATH11K_CE_OFFSET(ab);
-	ie2_reg_addr = ce_ie_addr->ie2_reg_addr + ATH11K_CE_OFFSET(ab);
-	ie3_reg_addr = ce_ie_addr->ie3_reg_addr + ATH11K_CE_OFFSET(ab);
+	ie1_reg_addr = ce_ie_addr->ie1_reg_addr;
+	ie2_reg_addr = ce_ie_addr->ie2_reg_addr;
+	ie3_reg_addr = ce_ie_addr->ie3_reg_addr;
 
 	ce_attr = &ab->hw_params.host_ce_config[ce_id];
 	if (ce_attr->src_nentries)
@@ -954,6 +972,36 @@ static int ath11k_ahb_setup_msa_resources(struct ath11k_base *ab)
 	return 0;
 }
 
+static int ath11k_ahb_ce_remap(struct ath11k_base *ab)
+{
+	const struct ce_remap *ce_remap = ab->hw_params.ce_remap;
+	struct platform_device *pdev = ab->pdev;
+
+	if (!ce_remap) {
+		/* no separate CE register space */
+		ab->mem_ce = ab->mem;
+		return 0;
+	}
+
+	/* ce register space is moved out of wcss unlike ipq8074 or ipq6018
+	 * and the space is not contiguous, hence remapping the CE registers
+	 * to a new space for accessing them.
+	 */
+	ab->mem_ce = ioremap(ce_remap->base, ce_remap->size);
+	if (!ab->mem_ce) {
+		dev_err(&pdev->dev, "ce ioremap error\n");
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+static void ath11k_ahb_ce_unmap(struct ath11k_base *ab)
+{
+	if (ab->hw_params.ce_remap)
+		iounmap(ab->mem_ce);
+}
+
 static int ath11k_ahb_fw_resources_init(struct ath11k_base *ab)
 {
 	struct ath11k_ahb *ab_ahb = ath11k_ahb_priv(ab);
@@ -1146,25 +1194,13 @@ static int ath11k_ahb_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_core_free;
 
-	ab->mem_ce = ab->mem;
-
-	if (ab->hw_params.ce_remap) {
-		const struct ce_remap *ce_remap = ab->hw_params.ce_remap;
-		/* ce register space is moved out of wcss unlike ipq8074 or ipq6018
-		 * and the space is not contiguous, hence remapping the CE registers
-		 * to a new space for accessing them.
-		 */
-		ab->mem_ce = ioremap(ce_remap->base, ce_remap->size);
-		if (!ab->mem_ce) {
-			dev_err(&pdev->dev, "ce ioremap error\n");
-			ret = -ENOMEM;
-			goto err_core_free;
-		}
-	}
+	ret = ath11k_ahb_ce_remap(ab);
+	if (ret)
+		goto err_core_free;
 
 	ret = ath11k_ahb_fw_resources_init(ab);
 	if (ret)
-		goto err_core_free;
+		goto err_ce_unmap;
 
 	ret = ath11k_ahb_setup_smp2p_handle(ab);
 	if (ret)
@@ -1216,6 +1252,9 @@ err_release_smp2p_handle:
 err_fw_deinit:
 	ath11k_ahb_fw_resource_deinit(ab);
 
+err_ce_unmap:
+	ath11k_ahb_ce_unmap(ab);
+
 err_core_free:
 	ath11k_core_free(ab);
 	platform_set_drvdata(pdev, NULL);
@@ -1248,9 +1287,7 @@ static void ath11k_ahb_free_resources(struct ath11k_base *ab)
 	ath11k_ahb_release_smp2p_handle(ab);
 	ath11k_ahb_fw_resource_deinit(ab);
 	ath11k_ce_free_pipes(ab);
-
-	if (ab->hw_params.ce_remap)
-		iounmap(ab->mem_ce);
+	ath11k_ahb_ce_unmap(ab);
 
 	ath11k_core_free(ab);
 	platform_set_drvdata(pdev, NULL);

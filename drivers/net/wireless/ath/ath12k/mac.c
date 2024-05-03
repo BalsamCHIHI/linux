@@ -5269,6 +5269,7 @@ static void ath12k_mac_setup_sband_iftype_data(struct ath12k *ar,
 
 static int __ath12k_set_antenna(struct ath12k *ar, u32 tx_ant, u32 rx_ant)
 {
+	struct ath12k_hw *ah = ath12k_ar_to_ah(ar);
 	int ret;
 
 	lockdep_assert_held(&ar->conf_mutex);
@@ -5289,8 +5290,8 @@ static int __ath12k_set_antenna(struct ath12k *ar, u32 tx_ant, u32 rx_ant)
 	ar->cfg_tx_chainmask = tx_ant;
 	ar->cfg_rx_chainmask = rx_ant;
 
-	if (ar->state != ATH12K_STATE_ON &&
-	    ar->state != ATH12K_STATE_RESTARTED)
+	if (ah->state != ATH12K_HW_STATE_ON &&
+	    ah->state != ATH12K_HW_STATE_RESTARTED)
 		return 0;
 
 	ret = ath12k_wmi_pdev_set_param(ar, WMI_PDEV_PARAM_TX_CHAIN_MASK,
@@ -5614,27 +5615,14 @@ static void ath12k_mac_wait_reconfigure(struct ath12k_base *ab)
 
 static int ath12k_mac_start(struct ath12k *ar)
 {
+	struct ath12k_hw *ah = ar->ah;
 	struct ath12k_base *ab = ar->ab;
 	struct ath12k_pdev *pdev = ar->pdev;
 	int ret;
 
-	mutex_lock(&ar->conf_mutex);
+	lockdep_assert_held(&ah->hw_mutex);
 
-	switch (ar->state) {
-	case ATH12K_STATE_OFF:
-		ar->state = ATH12K_STATE_ON;
-		break;
-	case ATH12K_STATE_RESTARTING:
-		ar->state = ATH12K_STATE_RESTARTED;
-		ath12k_mac_wait_reconfigure(ab);
-		break;
-	case ATH12K_STATE_RESTARTED:
-	case ATH12K_STATE_WEDGED:
-	case ATH12K_STATE_ON:
-		WARN_ON(1);
-		ret = -EINVAL;
-		goto err;
-	}
+	mutex_lock(&ar->conf_mutex);
 
 	ret = ath12k_wmi_pdev_set_param(ar, WMI_PDEV_PARAM_PMF_QOS,
 					1, pdev->pdev_id);
@@ -5726,7 +5714,6 @@ static int ath12k_mac_start(struct ath12k *ar)
 
 	return 0;
 err:
-	ar->state = ATH12K_STATE_OFF;
 	mutex_unlock(&ar->conf_mutex);
 
 	return ret;
@@ -5749,9 +5736,30 @@ static int ath12k_mac_op_start(struct ieee80211_hw *hw)
 
 	ath12k_drain_tx(ah);
 
+	guard(mutex)(&ah->hw_mutex);
+
+	switch (ah->state) {
+	case ATH12K_HW_STATE_OFF:
+		ah->state = ATH12K_HW_STATE_ON;
+		break;
+	case ATH12K_HW_STATE_RESTARTING:
+		ah->state = ATH12K_HW_STATE_RESTARTED;
+		ath12k_mac_wait_reconfigure(ah->ab);
+		break;
+	case ATH12K_HW_STATE_RESTARTED:
+	case ATH12K_HW_STATE_WEDGED:
+	case ATH12K_HW_STATE_ON:
+		ah->state = ATH12K_HW_STATE_OFF;
+
+		WARN_ON(1);
+		return -EINVAL;
+	}
+
 	for_each_ar(ah, ar, i) {
 		ret = ath12k_mac_start(ar);
 		if (ret) {
+			ah->state = ATH12K_HW_STATE_OFF;
+
 			ath12k_err(ar->ab, "fail to start mac operations in pdev idx %d ret %d\n",
 				   ar->pdev_idx, ret);
 			goto fail_start;
@@ -5759,11 +5767,13 @@ static int ath12k_mac_op_start(struct ieee80211_hw *hw)
 	}
 
 	return 0;
+
 fail_start:
 	for (; i > 0; i--) {
 		ar = ath12k_ah_to_ar(ah, i - 1);
 		ath12k_mac_stop(ar);
 	}
+
 	return ret;
 }
 
@@ -5826,8 +5836,11 @@ int ath12k_mac_rfkill_enable_radio(struct ath12k *ar, bool enable)
 
 static void ath12k_mac_stop(struct ath12k *ar)
 {
+	struct ath12k_hw *ah = ar->ah;
 	struct htt_ppdu_stats_info *ppdu_stats, *tmp;
 	int ret;
+
+	lockdep_assert_held(&ah->hw_mutex);
 
 	mutex_lock(&ar->conf_mutex);
 	ret = ath12k_mac_config_mon_status_default(ar, false);
@@ -5836,7 +5849,6 @@ static void ath12k_mac_stop(struct ath12k *ar)
 			   ret);
 
 	clear_bit(ATH12K_CAC_RUNNING, &ar->dev_flags);
-	ar->state = ATH12K_STATE_OFF;
 	mutex_unlock(&ar->conf_mutex);
 
 	cancel_delayed_work_sync(&ar->scan.timeout);
@@ -5865,8 +5877,14 @@ static void ath12k_mac_op_stop(struct ieee80211_hw *hw)
 
 	ath12k_drain_tx(ah);
 
+	mutex_lock(&ah->hw_mutex);
+
+	ah->state = ATH12K_HW_STATE_OFF;
+
 	for_each_ar(ah, ar, i)
 		ath12k_mac_stop(ar);
+
+	mutex_unlock(&ah->hw_mutex);
 }
 
 static u8
@@ -7920,26 +7938,33 @@ ath12k_mac_op_reconfig_complete(struct ieee80211_hw *hw,
 	struct ath12k *ar;
 	struct ath12k_base *ab;
 	struct ath12k_vif *arvif;
-	int recovery_count;
+	int recovery_count, i;
 
 	if (reconfig_type != IEEE80211_RECONFIG_TYPE_RESTART)
 		return;
 
-	ar = ath12k_ah_to_ar(ah, 0);
-	ab = ar->ab;
+	guard(mutex)(&ah->hw_mutex);
 
-	mutex_lock(&ar->conf_mutex);
+	if (ah->state != ATH12K_HW_STATE_RESTARTED)
+		return;
 
-	if (ar->state == ATH12K_STATE_RESTARTED) {
+	ah->state = ATH12K_HW_STATE_ON;
+	ieee80211_wake_queues(hw);
+
+	for_each_ar(ah, ar, i) {
+		mutex_lock(&ar->conf_mutex);
+
+		ab = ar->ab;
+
 		ath12k_warn(ar->ab, "pdev %d successfully recovered\n",
 			    ar->pdev->pdev_id);
-		ar->state = ATH12K_STATE_ON;
-		ieee80211_wake_queues(hw);
 
 		if (ab->is_reset) {
 			recovery_count = atomic_inc_return(&ab->recovery_count);
+
 			ath12k_dbg(ab, ATH12K_DBG_BOOT, "recovery count %d\n",
 				   recovery_count);
+
 			/* When there are multiple radios in an SOC,
 			 * the recovery has to be done for each radio
 			 */
@@ -7958,6 +7983,7 @@ ath12k_mac_op_reconfig_complete(struct ieee80211_hw *hw,
 				   arvif->key_cipher,
 				   arvif->is_up,
 				   arvif->vdev_type);
+
 			/* After trigger disconnect, then upper layer will
 			 * trigger connect again, then the PN number of
 			 * upper layer will be reset to keep up with AP
@@ -7967,13 +7993,14 @@ ath12k_mac_op_reconfig_complete(struct ieee80211_hw *hw,
 			    arvif->vdev_type == WMI_VDEV_TYPE_STA &&
 			    arvif->vdev_subtype == WMI_VDEV_SUBTYPE_NONE) {
 				ieee80211_hw_restart_disconnect(arvif->vif);
+
 				ath12k_dbg(ab, ATH12K_DBG_BOOT,
 					   "restart disconnect\n");
 			}
 		}
-	}
 
-	mutex_unlock(&ar->conf_mutex);
+		mutex_unlock(&ar->conf_mutex);
+	}
 }
 
 static void
@@ -8917,7 +8944,10 @@ static struct ath12k_hw *ath12k_mac_hw_allocate(struct ath12k_base *ab,
 
 	ah = ath12k_hw_to_ah(hw);
 	ah->hw = hw;
+	ah->ab = ab;
 	ah->num_radio = num_pdev_map;
+
+	mutex_init(&ah->hw_mutex);
 
 	for (i = 0; i < num_pdev_map; i++) {
 		ab = pdev_map[i].ab;
