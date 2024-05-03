@@ -1659,7 +1659,7 @@ void ath11k_mac_bcn_tx_event(struct ath11k_vif *arvif)
 	if (vif->bss_conf.color_change_active &&
 	    ieee80211_beacon_cntdwn_is_complete(vif, 0)) {
 		arvif->bcca_zero_sent = true;
-		ieee80211_color_change_finish(vif);
+		ieee80211_color_change_finish(vif, 0);
 		return;
 	}
 
@@ -9104,7 +9104,6 @@ static void ath11k_mac_op_ipv6_changed(struct ieee80211_hw *hw,
 	struct ath11k_vif *arvif = ath11k_vif_to_arvif(vif);
 	struct inet6_ifaddr *ifa6;
 	struct ifacaddr6 *ifaca6;
-	struct list_head *p;
 	u32 count, scope;
 
 	ath11k_dbg(ar->ab, ATH11K_DBG_MAC, "op ipv6 changed\n");
@@ -9120,11 +9119,10 @@ static void ath11k_mac_op_ipv6_changed(struct ieee80211_hw *hw,
 	memcpy(offload->mac_addr, vif->addr, ETH_ALEN);
 
 	/* get unicast address */
-	list_for_each(p, &idev->addr_list) {
+	list_for_each_entry(ifa6, &idev->addr_list, if_list) {
 		if (count >= ATH11K_IPV6_MAX_COUNT)
 			goto generate;
 
-		ifa6 = list_entry(p, struct inet6_ifaddr, if_list);
 		if (ifa6->flags & IFA_F_DADFAILED)
 			continue;
 		scope = ipv6_addr_src_scope(&ifa6->addr);
@@ -10126,6 +10124,7 @@ static int __ath11k_mac_register(struct ath11k *ar)
 	if (ret)
 		goto err;
 
+	wiphy_read_of_freq_limits(ar->hw->wiphy);
 	ath11k_mac_setup_ht_vht_cap(ar, cap, &ht_cap);
 	ath11k_mac_setup_he_cap(ar, cap);
 
