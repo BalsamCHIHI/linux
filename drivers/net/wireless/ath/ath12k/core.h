@@ -792,6 +792,7 @@ struct ath12k_hw_group {
 	 */
 	struct ath12k_hw *ah[ATH12K_GROUP_MAX_RADIO];
 	u8 num_hw;
+	u8 mlo_capable;
 };
 
 /**
