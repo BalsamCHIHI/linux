@@ -1436,6 +1436,7 @@ static struct ath12k_hw_group *ath12k_core_assign_hw_group(struct ath12k_base *a
 	ab->device_id = ag->num_probed++;
 	ag->ab[ab->device_id] = ab;
 	ab->ag = ag;
+	ag->mlo_capable = ATH12K_INTRA_DEVICE_MLO_SUPPORT;
 
 	return ag;
 }
