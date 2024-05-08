@@ -2200,6 +2200,9 @@ out:
 	/* If PHY capability not advertised then rely on default num link */
 	ab->qmi.num_radios = ab->hw_params->def_num_link;
 
+	if (!ab->mlo_capable_flags)
+		ab->ag->mlo_capable = 0;
+
 	ath12k_dbg(ab, ATH12K_DBG_QMI,
 		   "no valid response from PHY capability, choose default num_phy %d\n",
 		   ab->qmi.num_radios);
