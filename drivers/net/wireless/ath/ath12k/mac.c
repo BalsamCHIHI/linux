@@ -91,6 +91,10 @@ static const struct ieee80211_channel ath12k_5ghz_channels[] = {
 };
 
 static const struct ieee80211_channel ath12k_6ghz_channels[] = {
+	/* Operating Class 136 */
+	CHAN6G(2, 5935, 0),
+
+	/* Operating Classes 131-135 */
 	CHAN6G(1, 5955, 0),
 	CHAN6G(5, 5975, 0),
 	CHAN6G(9, 5995, 0),
@@ -666,6 +670,67 @@ static struct ath12k *ath12k_get_ar_by_vif(struct ieee80211_hw *hw,
 	return NULL;
 }
 
+struct ath12k_vif *ath12k_mac_get_vif_up(struct ath12k_base *ab)
+{
+	struct ath12k *ar;
+	struct ath12k_pdev *pdev;
+	struct ath12k_vif *arvif;
+	int i;
+
+	for (i = 0; i < ab->num_radios; i++) {
+		pdev = &ab->pdevs[i];
+		ar = pdev->ar;
+		list_for_each_entry(arvif, &ar->arvifs, list) {
+			if (arvif->is_up)
+				return arvif;
+		}
+	}
+
+	return NULL;
+}
+
+static bool ath12k_mac_band_match(enum nl80211_band band1, enum WMI_HOST_WLAN_BAND band2)
+{
+	return (((band1 == NL80211_BAND_2GHZ) && (band2 & WMI_HOST_WLAN_2G_CAP)) ||
+		(((band1 == NL80211_BAND_5GHZ) || (band1 == NL80211_BAND_6GHZ)) &&
+		   (band2 & WMI_HOST_WLAN_5G_CAP)));
+}
+
+u8 ath12k_mac_get_target_pdev_id_from_vif(struct ath12k_vif *arvif)
+{
+	struct ath12k *ar = arvif->ar;
+	struct ath12k_base *ab = ar->ab;
+	struct ieee80211_vif *vif = arvif->vif;
+	struct cfg80211_chan_def def;
+	enum nl80211_band band;
+	u8 pdev_id = ab->fw_pdev[0].pdev_id;
+	int i;
+
+	if (WARN_ON(ath12k_mac_vif_chan(vif, &def)))
+		return pdev_id;
+
+	band = def.chan->band;
+
+	for (i = 0; i < ab->fw_pdev_count; i++) {
+		if (ath12k_mac_band_match(band, ab->fw_pdev[i].supported_bands))
+			return ab->fw_pdev[i].pdev_id;
+	}
+
+	return pdev_id;
+}
+
+u8 ath12k_mac_get_target_pdev_id(struct ath12k *ar)
+{
+	struct ath12k_vif *arvif;
+
+	arvif = ath12k_mac_get_vif_up(ar->ab);
+
+	if (arvif)
+		return ath12k_mac_get_target_pdev_id_from_vif(arvif);
+	else
+		return ar->ab->fw_pdev[0].pdev_id;
+}
+
 static void ath12k_pdev_caps_update(struct ath12k *ar)
 {
 	struct ath12k_base *ab = ar->ab;
@@ -863,9 +928,12 @@ static int ath12k_mac_vdev_setup_sync(struct ath12k *ar)
 
 static int ath12k_monitor_vdev_up(struct ath12k *ar, int vdev_id)
 {
+	struct ath12k_wmi_vdev_up_params params = {};
 	int ret;
 
-	ret = ath12k_wmi_vdev_up(ar, vdev_id, 0, ar->mac_addr);
+	params.vdev_id = vdev_id;
+	params.bssid = ar->mac_addr;
+	ret = ath12k_wmi_vdev_up(ar, &params);
 	if (ret) {
 		ath12k_warn(ar->ab, "failed to put up monitor vdev %i: %d\n",
 			    vdev_id, ret);
@@ -882,6 +950,7 @@ static int ath12k_mac_monitor_vdev_start(struct ath12k *ar, int vdev_id,
 {
 	struct ieee80211_channel *channel;
 	struct wmi_vdev_start_req_arg arg = {};
+	struct ath12k_wmi_vdev_up_params params = {};
 	int ret;
 
 	lockdep_assert_held(&ar->conf_mutex);
@@ -922,7 +991,9 @@ static int ath12k_mac_monitor_vdev_start(struct ath12k *ar, int vdev_id,
 		return ret;
 	}
 
-	ret = ath12k_wmi_vdev_up(ar, vdev_id, 0, ar->mac_addr);
+	params.vdev_id = vdev_id;
+	params.bssid = ar->mac_addr;
+	ret = ath12k_wmi_vdev_up(ar, &params);
 	if (ret) {
 		ath12k_warn(ar->ab, "failed to put up monitor vdev %i: %d\n",
 			    vdev_id, ret);
@@ -1289,37 +1360,188 @@ static int ath12k_mac_remove_vendor_ie(struct sk_buff *skb, unsigned int oui,
 	return 0;
 }
 
+static void ath12k_mac_set_arvif_ies(struct ath12k_vif *arvif, struct sk_buff *bcn,
+				     u8 bssid_index, bool *nontx_profile_found)
+{
+	struct ieee80211_mgmt *mgmt = (struct ieee80211_mgmt *)bcn->data;
+	const struct element *elem, *nontx, *index, *nie;
+	const u8 *start, *tail;
+	u16 rem_len;
+	u8 i;
+
+	start = bcn->data + ieee80211_get_hdrlen_from_skb(bcn) + sizeof(mgmt->u.beacon);
+	tail = skb_tail_pointer(bcn);
+	rem_len = tail - start;
+
+	arvif->rsnie_present = false;
+	arvif->wpaie_present = false;
+
+	if (cfg80211_find_ie(WLAN_EID_RSN, start, rem_len))
+		arvif->rsnie_present = true;
+	if (cfg80211_find_vendor_ie(WLAN_OUI_MICROSOFT, WLAN_OUI_TYPE_MICROSOFT_WPA,
+				    start, rem_len))
+		arvif->wpaie_present = true;
+
+	/* Return from here for the transmitted profile */
+	if (!bssid_index)
+		return;
+
+	/* Initial rsnie_present for the nontransmitted profile is set to be same as that
+	 * of the transmitted profile. It will be changed if security configurations are
+	 * different.
+	 */
+	*nontx_profile_found = false;
+	for_each_element_id(elem, WLAN_EID_MULTIPLE_BSSID, start, rem_len) {
+		/* Fixed minimum MBSSID element length with at least one
+		 * nontransmitted BSSID profile is 12 bytes as given below;
+		 * 1 (max BSSID indicator) +
+		 * 2 (Nontransmitted BSSID profile: Subelement ID + length) +
+		 * 4 (Nontransmitted BSSID Capabilities: tag + length + info)
+		 * 2 (Nontransmitted BSSID SSID: tag + length)
+		 * 3 (Nontransmitted BSSID Index: tag + length + BSSID index
+		 */
+		if (elem->datalen < 12 || elem->data[0] < 1)
+			continue; /* Max BSSID indicator must be >=1 */
+
+		for_each_element(nontx, elem->data + 1, elem->datalen - 1) {
+			start = nontx->data;
+
+			if (nontx->id != 0 || nontx->datalen < 4)
+				continue; /* Invalid nontransmitted profile */
+
+			if (nontx->data[0] != WLAN_EID_NON_TX_BSSID_CAP ||
+			    nontx->data[1] != 2) {
+				continue; /* Missing nontransmitted BSS capabilities */
+			}
+
+			if (nontx->data[4] != WLAN_EID_SSID)
+				continue; /* Missing SSID for nontransmitted BSS */
+
+			index = cfg80211_find_elem(WLAN_EID_MULTI_BSSID_IDX,
+						   start, nontx->datalen);
+			if (!index || index->datalen < 1 || index->data[0] == 0)
+				continue; /* Invalid MBSSID Index element */
+
+			if (index->data[0] == bssid_index) {
+				*nontx_profile_found = true;
+				if (cfg80211_find_ie(WLAN_EID_RSN,
+						     nontx->data,
+						     nontx->datalen)) {
+					arvif->rsnie_present = true;
+					return;
+				} else if (!arvif->rsnie_present) {
+					return; /* Both tx and nontx BSS are open */
+				}
+
+				nie = cfg80211_find_ext_elem(WLAN_EID_EXT_NON_INHERITANCE,
+							     nontx->data,
+							     nontx->datalen);
+				if (!nie || nie->datalen < 2)
+					return; /* Invalid non-inheritance element */
+
+				for (i = 1; i < nie->datalen - 1; i++) {
+					if (nie->data[i] == WLAN_EID_RSN) {
+						arvif->rsnie_present = false;
+						break;
+					}
+				}
+
+				return;
+			}
+		}
+	}
+}
+
+static int ath12k_mac_setup_bcn_tmpl_ema(struct ath12k_vif *arvif)
+{
+	struct ieee80211_bss_conf *bss_conf = &arvif->vif->bss_conf;
+	struct ath12k_wmi_bcn_tmpl_ema_arg ema_args;
+	struct ieee80211_ema_beacons *beacons;
+	struct ath12k_vif *tx_arvif;
+	bool nontx_profile_found = false;
+	int ret = 0;
+	u8 i;
+
+	tx_arvif = ath12k_vif_to_arvif(arvif->vif->mbssid_tx_vif);
+	beacons = ieee80211_beacon_get_template_ema_list(ath12k_ar_to_hw(tx_arvif->ar),
+							 tx_arvif->vif, 0);
+	if (!beacons || !beacons->cnt) {
+		ath12k_warn(arvif->ar->ab,
+			    "failed to get ema beacon templates from mac80211\n");
+		return -EPERM;
+	}
+
+	if (tx_arvif == arvif)
+		ath12k_mac_set_arvif_ies(arvif, beacons->bcn[0].skb, 0, NULL);
+
+	for (i = 0; i < beacons->cnt; i++) {
+		if (tx_arvif != arvif && !nontx_profile_found)
+			ath12k_mac_set_arvif_ies(arvif, beacons->bcn[i].skb,
+						 bss_conf->bssid_index,
+						 &nontx_profile_found);
+
+		ema_args.bcn_cnt = beacons->cnt;
+		ema_args.bcn_index = i;
+		ret = ath12k_wmi_bcn_tmpl(tx_arvif->ar, tx_arvif->vdev_id,
+					  &beacons->bcn[i].offs,
+					  beacons->bcn[i].skb, &ema_args);
+		if (ret) {
+			ath12k_warn(tx_arvif->ar->ab,
+				    "failed to set ema beacon template id %i error %d\n",
+				    i, ret);
+			break;
+		}
+	}
+
+	if (tx_arvif != arvif && !nontx_profile_found)
+		ath12k_warn(arvif->ar->ab,
+			    "nontransmitted bssid index %u not found in beacon template\n",
+			    bss_conf->bssid_index);
+
+	ieee80211_beacon_free_ema_list(beacons);
+	return ret;
+}
+
 static int ath12k_mac_setup_bcn_tmpl(struct ath12k_vif *arvif)
 {
+	struct ath12k_vif *tx_arvif = arvif;
 	struct ath12k *ar = arvif->ar;
 	struct ath12k_base *ab = ar->ab;
-	struct ieee80211_hw *hw = ath12k_ar_to_hw(ar);
 	struct ieee80211_vif *vif = arvif->vif;
 	struct ieee80211_mutable_offsets offs = {};
+	bool nontx_profile_found = false;
 	struct sk_buff *bcn;
-	struct ieee80211_mgmt *mgmt;
-	u8 *ies;
 	int ret;
 
 	if (arvif->vdev_type != WMI_VDEV_TYPE_AP)
 		return 0;
 
-	bcn = ieee80211_beacon_get_template(hw, vif, &offs, 0);
+	if (vif->mbssid_tx_vif) {
+		tx_arvif = ath12k_vif_to_arvif(vif->mbssid_tx_vif);
+		if (tx_arvif != arvif && arvif->is_up)
+			return 0;
+
+		if (vif->bss_conf.ema_ap)
+			return ath12k_mac_setup_bcn_tmpl_ema(arvif);
+	}
+
+	bcn = ieee80211_beacon_get_template(ath12k_ar_to_hw(tx_arvif->ar), tx_arvif->vif,
+					    &offs, 0);
 	if (!bcn) {
 		ath12k_warn(ab, "failed to get beacon template from mac80211\n");
 		return -EPERM;
 	}
 
-	ies = bcn->data + ieee80211_get_hdrlen_from_skb(bcn);
-	ies += sizeof(mgmt->u.beacon);
-
-	if (cfg80211_find_ie(WLAN_EID_RSN, ies, (skb_tail_pointer(bcn) - ies)))
-		arvif->rsnie_present = true;
-
-	if (cfg80211_find_vendor_ie(WLAN_OUI_MICROSOFT,
-				    WLAN_OUI_TYPE_MICROSOFT_WPA,
-				    ies, (skb_tail_pointer(bcn) - ies)))
-		arvif->wpaie_present = true;
+	if (tx_arvif == arvif) {
+		ath12k_mac_set_arvif_ies(arvif, bcn, 0, NULL);
+	} else {
+		ath12k_mac_set_arvif_ies(arvif, bcn,
+					 arvif->vif->bss_conf.bssid_index,
+					 &nontx_profile_found);
+		if (!nontx_profile_found)
+			ath12k_warn(ab,
+				    "nontransmitted profile not found in beacon template\n");
+	}
 
 	if (arvif->vif->type == NL80211_IFTYPE_AP && arvif->vif->p2p) {
 		ret = ath12k_mac_setup_bcn_p2p_ie(arvif, bcn);
@@ -1344,7 +1566,7 @@ static int ath12k_mac_setup_bcn_tmpl(struct ath12k_vif *arvif)
 		}
 	}
 
-	ret = ath12k_wmi_bcn_tmpl(ar, arvif->vdev_id, &offs, bcn);
+	ret = ath12k_wmi_bcn_tmpl(ar, arvif->vdev_id, &offs, bcn, NULL);
 
 	if (ret)
 		ath12k_warn(ab, "failed to submit beacon template command: %d\n",
@@ -1358,6 +1580,7 @@ free_bcn_skb:
 static void ath12k_control_beaconing(struct ath12k_vif *arvif,
 				     struct ieee80211_bss_conf *info)
 {
+	struct ath12k_wmi_vdev_up_params params = {};
 	struct ath12k *ar = arvif->ar;
 	int ret;
 
@@ -1385,8 +1608,15 @@ static void ath12k_control_beaconing(struct ath12k_vif *arvif,
 
 	ether_addr_copy(arvif->bssid, info->bssid);
 
-	ret = ath12k_wmi_vdev_up(arvif->ar, arvif->vdev_id, arvif->aid,
-				 arvif->bssid);
+	params.vdev_id = arvif->vdev_id;
+	params.aid = arvif->aid;
+	params.bssid = arvif->bssid;
+	if (arvif->vif->mbssid_tx_vif) {
+		params.tx_bssid = ath12k_vif_to_arvif(arvif->vif->mbssid_tx_vif)->bssid;
+		params.nontx_profile_idx = info->bssid_index;
+		params.nontx_profile_cnt = 1 << info->bssid_indicator;
+	}
+	ret = ath12k_wmi_vdev_up(arvif->ar, &params);
 	if (ret) {
 		ath12k_warn(ar->ab, "failed to bring up vdev %d: %i\n",
 			    arvif->vdev_id, ret);
@@ -2028,17 +2258,88 @@ static void ath12k_peer_assoc_h_he(struct ath12k *ar,
 	}
 }
 
+static void ath12k_peer_assoc_h_he_6ghz(struct ath12k *ar,
+					struct ieee80211_vif *vif,
+					struct ieee80211_sta *sta,
+					struct ath12k_wmi_peer_assoc_arg *arg)
+{
+	const struct ieee80211_sta_he_cap *he_cap = &sta->deflink.he_cap;
+	struct cfg80211_chan_def def;
+	enum nl80211_band band;
+	u8 ampdu_factor, mpdu_density;
+
+	if (WARN_ON(ath12k_mac_vif_chan(vif, &def)))
+		return;
+
+	band = def.chan->band;
+
+	if (!arg->he_flag || band != NL80211_BAND_6GHZ || !sta->deflink.he_6ghz_capa.capa)
+		return;
+
+	if (sta->deflink.bandwidth == IEEE80211_STA_RX_BW_40)
+		arg->bw_40 = true;
+
+	if (sta->deflink.bandwidth == IEEE80211_STA_RX_BW_80)
+		arg->bw_80 = true;
+
+	if (sta->deflink.bandwidth == IEEE80211_STA_RX_BW_160)
+		arg->bw_160 = true;
+
+	if (sta->deflink.bandwidth == IEEE80211_STA_RX_BW_320)
+		arg->bw_320 = true;
+
+	arg->peer_he_caps_6ghz = le16_to_cpu(sta->deflink.he_6ghz_capa.capa);
+
+	mpdu_density = u32_get_bits(arg->peer_he_caps_6ghz,
+				    IEEE80211_HE_6GHZ_CAP_MIN_MPDU_START);
+	arg->peer_mpdu_density = ath12k_parse_mpdudensity(mpdu_density);
+
+	/* From IEEE Std 802.11ax-2021 - Section 10.12.2: An HE STA shall be capable of
+	 * receiving A-MPDU where the A-MPDU pre-EOF padding length is up to the value
+	 * indicated by the Maximum A-MPDU Length Exponent Extension field in the HE
+	 * Capabilities element and the Maximum A-MPDU Length Exponent field in HE 6 GHz
+	 * Band Capabilities element in the 6 GHz band.
+	 *
+	 * Here, we are extracting the Max A-MPDU Exponent Extension from HE caps and
+	 * factor is the Maximum A-MPDU Length Exponent from HE 6 GHZ Band capability.
+	 */
+	ampdu_factor = u8_get_bits(he_cap->he_cap_elem.mac_cap_info[3],
+				   IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_MASK) +
+			u32_get_bits(arg->peer_he_caps_6ghz,
+				     IEEE80211_HE_6GHZ_CAP_MAX_AMPDU_LEN_EXP);
+
+	arg->peer_max_mpdu = (1u << (IEEE80211_HE_6GHZ_MAX_AMPDU_FACTOR +
+				     ampdu_factor)) - 1;
+}
+
+static int ath12k_get_smps_from_capa(const struct ieee80211_sta_ht_cap *ht_cap,
+				     const struct ieee80211_he_6ghz_capa *he_6ghz_capa,
+				     int *smps)
+{
+	if (!ht_cap->ht_supported && !he_6ghz_capa->capa)
+		return -EOPNOTSUPP;
+
+	if (ht_cap->ht_supported)
+		*smps = u16_get_bits(ht_cap->cap, IEEE80211_HT_CAP_SM_PS);
+	else
+		*smps = le16_get_bits(he_6ghz_capa->capa,
+				      IEEE80211_HE_6GHZ_CAP_SM_PS);
+
+	if (*smps >= ARRAY_SIZE(ath12k_smps_map))
+		return -EINVAL;
+
+	return 0;
+}
+
 static void ath12k_peer_assoc_h_smps(struct ieee80211_sta *sta,
 				     struct ath12k_wmi_peer_assoc_arg *arg)
 {
+	const struct ieee80211_he_6ghz_capa *he_6ghz_capa = &sta->deflink.he_6ghz_capa;
 	const struct ieee80211_sta_ht_cap *ht_cap = &sta->deflink.ht_cap;
 	int smps;
 
-	if (!ht_cap->ht_supported)
+	if (ath12k_get_smps_from_capa(ht_cap, he_6ghz_capa, &smps))
 		return;
-
-	smps = ht_cap->cap & IEEE80211_HT_CAP_SM_PS;
-	smps >>= IEEE80211_HT_CAP_SM_PS_SHIFT;
 
 	switch (smps) {
 	case WLAN_HT_CAP_SM_PS_STATIC:
@@ -2500,6 +2801,7 @@ static void ath12k_peer_assoc_prepare(struct ath12k *ar,
 	ath12k_peer_assoc_h_ht(ar, vif, sta, arg);
 	ath12k_peer_assoc_h_vht(ar, vif, sta, arg);
 	ath12k_peer_assoc_h_he(ar, vif, sta, arg);
+	ath12k_peer_assoc_h_he_6ghz(ar, vif, sta, arg);
 	ath12k_peer_assoc_h_eht(ar, vif, sta, arg);
 	ath12k_peer_assoc_h_qos(ar, vif, sta, arg);
 	ath12k_peer_assoc_h_phymode(ar, vif, sta, arg);
@@ -2510,18 +2812,14 @@ static void ath12k_peer_assoc_prepare(struct ath12k *ar,
 
 static int ath12k_setup_peer_smps(struct ath12k *ar, struct ath12k_vif *arvif,
 				  const u8 *addr,
-				  const struct ieee80211_sta_ht_cap *ht_cap)
+				  const struct ieee80211_sta_ht_cap *ht_cap,
+				  const struct ieee80211_he_6ghz_capa *he_6ghz_capa)
 {
-	int smps;
+	int smps, ret = 0;
 
-	if (!ht_cap->ht_supported)
-		return 0;
-
-	smps = ht_cap->cap & IEEE80211_HT_CAP_SM_PS;
-	smps >>= IEEE80211_HT_CAP_SM_PS_SHIFT;
-
-	if (smps >= ARRAY_SIZE(ath12k_smps_map))
-		return -EINVAL;
+	ret = ath12k_get_smps_from_capa(ht_cap, he_6ghz_capa, &smps);
+	if (ret < 0)
+		return ret;
 
 	return ath12k_wmi_set_peer_param(ar, addr, arvif->vdev_id,
 					 WMI_PEER_MIMO_PS_STATE,
@@ -2533,6 +2831,7 @@ static void ath12k_bss_assoc(struct ath12k *ar,
 			     struct ieee80211_bss_conf *bss_conf)
 {
 	struct ieee80211_vif *vif = arvif->vif;
+	struct ath12k_wmi_vdev_up_params params = {};
 	struct ath12k_wmi_peer_assoc_arg peer_arg;
 	struct ieee80211_sta *ap_sta;
 	struct ath12k_peer *peer;
@@ -2572,7 +2871,8 @@ static void ath12k_bss_assoc(struct ath12k *ar,
 	}
 
 	ret = ath12k_setup_peer_smps(ar, arvif, bss_conf->bssid,
-				     &ap_sta->deflink.ht_cap);
+				     &ap_sta->deflink.ht_cap,
+				     &ap_sta->deflink.he_6ghz_capa);
 	if (ret) {
 		ath12k_warn(ar->ab, "failed to setup peer SMPS for vdev %d: %d\n",
 			    arvif->vdev_id, ret);
@@ -2584,7 +2884,10 @@ static void ath12k_bss_assoc(struct ath12k *ar,
 	arvif->aid = vif->cfg.aid;
 	ether_addr_copy(arvif->bssid, bss_conf->bssid);
 
-	ret = ath12k_wmi_vdev_up(ar, arvif->vdev_id, arvif->aid, arvif->bssid);
+	params.vdev_id = arvif->vdev_id;
+	params.aid = arvif->aid;
+	params.bssid = arvif->bssid;
+	ret = ath12k_wmi_vdev_up(ar, &params);
 	if (ret) {
 		ath12k_warn(ar->ab, "failed to set vdev %d up: %d\n",
 			    arvif->vdev_id, ret);
@@ -3879,7 +4182,8 @@ static int ath12k_station_assoc(struct ath12k *ar,
 		return 0;
 
 	ret = ath12k_setup_peer_smps(ar, arvif, sta->addr,
-				     &sta->deflink.ht_cap);
+				     &sta->deflink.ht_cap,
+				     &sta->deflink.he_6ghz_capa);
 	if (ret) {
 		ath12k_warn(ar->ab, "failed to setup peer SMPS for vdev %d: %d\n",
 			    arvif->vdev_id, ret);
@@ -5910,16 +6214,58 @@ ath12k_mac_get_vdev_stats_id(struct ath12k_vif *arvif)
 	return vdev_stats_id;
 }
 
-static void ath12k_mac_setup_vdev_create_arg(struct ath12k_vif *arvif,
-					     struct ath12k_wmi_vdev_create_arg *arg)
+static int ath12k_mac_setup_vdev_params_mbssid(struct ath12k_vif *arvif,
+					       u32 *flags, u32 *tx_vdev_id)
+{
+	struct ieee80211_vif *tx_vif = arvif->vif->mbssid_tx_vif;
+	struct ath12k *ar = arvif->ar;
+	struct ath12k_vif *tx_arvif;
+
+	if (!tx_vif)
+		return 0;
+
+	tx_arvif = ath12k_vif_to_arvif(tx_vif);
+
+	if (arvif->vif->bss_conf.nontransmitted) {
+		if (ar->ah->hw->wiphy != ieee80211_vif_to_wdev(tx_vif)->wiphy)
+			return -EINVAL;
+
+		*flags = WMI_VDEV_MBSSID_FLAGS_NON_TRANSMIT_AP;
+		*tx_vdev_id = tx_arvif->vdev_id;
+	} else if (tx_arvif == arvif) {
+		*flags = WMI_VDEV_MBSSID_FLAGS_TRANSMIT_AP;
+	} else {
+		return -EINVAL;
+	}
+
+	if (arvif->vif->bss_conf.ema_ap)
+		*flags |= WMI_VDEV_MBSSID_FLAGS_EMA_MODE;
+
+	return 0;
+}
+
+static int ath12k_mac_setup_vdev_create_arg(struct ath12k_vif *arvif,
+					    struct ath12k_wmi_vdev_create_arg *arg)
 {
 	struct ath12k *ar = arvif->ar;
 	struct ath12k_pdev *pdev = ar->pdev;
+	int ret;
 
 	arg->if_id = arvif->vdev_id;
 	arg->type = arvif->vdev_type;
 	arg->subtype = arvif->vdev_subtype;
 	arg->pdev_id = pdev->pdev_id;
+
+	arg->mbssid_flags = WMI_VDEV_MBSSID_FLAGS_NON_MBSSID_AP;
+	arg->mbssid_tx_vdev_id = 0;
+	if (!test_bit(WMI_TLV_SERVICE_MBSS_PARAM_IN_VDEV_START_SUPPORT,
+		      ar->ab->wmi_ab.svc_map)) {
+		ret = ath12k_mac_setup_vdev_params_mbssid(arvif,
+							  &arg->mbssid_flags,
+							  &arg->mbssid_tx_vdev_id);
+		if (ret)
+			return ret;
+	}
 
 	if (pdev->cap.supported_bands & WMI_HOST_WLAN_2G_CAP) {
 		arg->chains[NL80211_BAND_2GHZ].tx = ar->num_tx_chains;
@@ -5936,6 +6282,7 @@ static void ath12k_mac_setup_vdev_create_arg(struct ath12k_vif *arvif,
 	}
 
 	arg->if_stats_id = ath12k_mac_get_vdev_stats_id(arvif);
+	return 0;
 }
 
 static u32
@@ -6117,7 +6464,12 @@ static int ath12k_mac_vdev_create(struct ath12k *ar, struct ieee80211_vif *vif)
 	for (i = 0; i < ARRAY_SIZE(vif->hw_queue); i++)
 		vif->hw_queue[i] = i % (ATH12K_HW_MAX_QUEUES - 1);
 
-	ath12k_mac_setup_vdev_create_arg(arvif, &vdev_arg);
+	ret = ath12k_mac_setup_vdev_create_arg(arvif, &vdev_arg);
+	if (ret) {
+		ath12k_warn(ab, "failed to create vdev parameters %d: %d\n",
+			    arvif->vdev_id, ret);
+		goto err;
+	}
 
 	ret = ath12k_wmi_vdev_create(ar, vif->addr, &vdev_arg);
 	if (ret) {
@@ -6859,10 +7211,16 @@ ath12k_mac_vdev_start_restart(struct ath12k_vif *arvif,
 	arg.pref_tx_streams = ar->num_tx_chains;
 	arg.pref_rx_streams = ar->num_rx_chains;
 
-	/* Fill the MBSSID flags to indicate AP is non MBSSID by default
-	 * Corresponding flags would be updated with MBSSID support.
-	 */
 	arg.mbssid_flags = WMI_VDEV_MBSSID_FLAGS_NON_MBSSID_AP;
+	arg.mbssid_tx_vdev_id = 0;
+	if (test_bit(WMI_TLV_SERVICE_MBSS_PARAM_IN_VDEV_START_SUPPORT,
+		     ar->ab->wmi_ab.svc_map)) {
+		ret = ath12k_mac_setup_vdev_params_mbssid(arvif,
+							  &arg.mbssid_flags,
+							  &arg.mbssid_tx_vdev_id);
+		if (ret)
+			return ret;
+	}
 
 	if (arvif->vdev_type == WMI_VDEV_TYPE_AP) {
 		arg.ssid = arvif->u.ap.ssid;
@@ -7056,7 +7414,9 @@ ath12k_mac_update_vif_chan(struct ath12k *ar,
 			   struct ieee80211_vif_chanctx_switch *vifs,
 			   int n_vifs)
 {
+	struct ath12k_wmi_vdev_up_params params = {};
 	struct ath12k_base *ab = ar->ab;
+	struct ieee80211_vif *vif;
 	struct ath12k_vif *arvif;
 	int ret;
 	int i;
@@ -7065,9 +7425,10 @@ ath12k_mac_update_vif_chan(struct ath12k *ar,
 	lockdep_assert_held(&ar->conf_mutex);
 
 	for (i = 0; i < n_vifs; i++) {
-		arvif = ath12k_vif_to_arvif(vifs[i].vif);
+		vif = vifs[i].vif;
+		arvif = ath12k_vif_to_arvif(vif);
 
-		if (vifs[i].vif->type == NL80211_IFTYPE_MONITOR)
+		if (vif->type == NL80211_IFTYPE_MONITOR)
 			monitor_vif = true;
 
 		ath12k_dbg(ab, ATH12K_DBG_MAC,
@@ -7077,29 +7438,6 @@ ath12k_mac_update_vif_chan(struct ath12k *ar,
 			   vifs[i].new_ctx->def.chan->center_freq,
 			   vifs[i].old_ctx->def.width,
 			   vifs[i].new_ctx->def.width);
-
-		if (WARN_ON(!arvif->is_started))
-			continue;
-
-		if (WARN_ON(!arvif->is_up))
-			continue;
-
-		ret = ath12k_wmi_vdev_down(ar, arvif->vdev_id);
-		if (ret) {
-			ath12k_warn(ab, "failed to down vdev %d: %d\n",
-				    arvif->vdev_id, ret);
-			continue;
-		}
-	}
-
-	/* All relevant vdevs are downed and associated channel resources
-	 * should be available for the channel switch now.
-	 */
-
-	/* TODO: Update ar->rx_channel */
-
-	for (i = 0; i < n_vifs; i++) {
-		arvif = ath12k_vif_to_arvif(vifs[i].vif);
 
 		if (WARN_ON(!arvif->is_started))
 			continue;
@@ -7136,8 +7474,16 @@ ath12k_mac_update_vif_chan(struct ath12k *ar,
 			ath12k_warn(ab, "failed to update bcn tmpl during csa: %d\n",
 				    ret);
 
-		ret = ath12k_wmi_vdev_up(arvif->ar, arvif->vdev_id, arvif->aid,
-					 arvif->bssid);
+		memset(&params, 0, sizeof(params));
+		params.vdev_id = arvif->vdev_id;
+		params.aid = arvif->aid;
+		params.bssid = arvif->bssid;
+		if (vif->mbssid_tx_vif) {
+			params.tx_bssid = ath12k_vif_to_arvif(vif->mbssid_tx_vif)->bssid;
+			params.nontx_profile_idx = vif->bss_conf.bssid_index;
+			params.nontx_profile_cnt = 1 << vif->bss_conf.bssid_indicator;
+		}
+		ret = ath12k_wmi_vdev_up(arvif->ar, &params);
 		if (ret) {
 			ath12k_warn(ab, "failed to bring vdev up %d: %d\n",
 				    arvif->vdev_id, ret);
@@ -8027,6 +8373,17 @@ static int ath12k_mac_op_get_survey(struct ieee80211_hw *hw, int idx,
 
 	if (!sband)
 		sband = hw->wiphy->bands[NL80211_BAND_5GHZ];
+	if (sband && idx >= sband->n_channels) {
+		idx -= sband->n_channels;
+		sband = NULL;
+	}
+
+	if (!sband)
+		sband = hw->wiphy->bands[NL80211_BAND_6GHZ];
+	if (!sband || idx >= sband->n_channels) {
+		idx -= sband->n_channels;
+		sband = NULL;
+	}
 
 	if (!sband || idx >= sband->n_channels)
 		return -ENOENT;
@@ -8489,19 +8846,23 @@ static int ath12k_mac_setup_iface_combinations(struct ath12k_hw *ah)
 
 static const u8 ath12k_if_types_ext_capa[] = {
 	[0] = WLAN_EXT_CAPA1_EXT_CHANNEL_SWITCHING,
+	[2] = WLAN_EXT_CAPA3_MULTI_BSSID_SUPPORT,
 	[7] = WLAN_EXT_CAPA8_OPMODE_NOTIF,
 };
 
 static const u8 ath12k_if_types_ext_capa_sta[] = {
 	[0] = WLAN_EXT_CAPA1_EXT_CHANNEL_SWITCHING,
+	[2] = WLAN_EXT_CAPA3_MULTI_BSSID_SUPPORT,
 	[7] = WLAN_EXT_CAPA8_OPMODE_NOTIF,
 	[9] = WLAN_EXT_CAPA10_TWT_REQUESTER_SUPPORT,
 };
 
 static const u8 ath12k_if_types_ext_capa_ap[] = {
 	[0] = WLAN_EXT_CAPA1_EXT_CHANNEL_SWITCHING,
+	[2] = WLAN_EXT_CAPA3_MULTI_BSSID_SUPPORT,
 	[7] = WLAN_EXT_CAPA8_OPMODE_NOTIF,
 	[9] = WLAN_EXT_CAPA10_TWT_RESPONDER_SUPPORT,
+	[10] = WLAN_EXT_CAPA11_EMA_SUPPORT,
 };
 
 static const struct wiphy_iftype_ext_capab ath12k_iftypes_ext_capa[] = {
@@ -8686,7 +9047,7 @@ static int ath12k_mac_hw_register(struct ath12k_hw *ah)
 	ieee80211_hw_set(hw, SUPPORTS_TX_FRAG);
 	ieee80211_hw_set(hw, REPORTS_LOW_ACK);
 
-	if (ht_cap & WMI_HT_CAP_ENABLED) {
+	if ((ht_cap & WMI_HT_CAP_ENABLED) || ar->supports_6ghz) {
 		ieee80211_hw_set(hw, AMPDU_AGGREGATION);
 		ieee80211_hw_set(hw, TX_AMPDU_SETUP_IN_HW);
 		ieee80211_hw_set(hw, SUPPORTS_REORDERING_BUFFER);
@@ -8701,7 +9062,8 @@ static int ath12k_mac_hw_register(struct ath12k_hw *ah)
 	 * for each band for a dual band capable radio. It will be tricky to
 	 * handle it when the ht capability different for each band.
 	 */
-	if (ht_cap & WMI_HT_CAP_DYNAMIC_SMPS)
+	if (ht_cap & WMI_HT_CAP_DYNAMIC_SMPS ||
+	    (ar->supports_6ghz && ab->hw_params->supports_dynamic_smps_6ghz))
 		wiphy->features |= NL80211_FEATURE_DYNAMIC_SMPS;
 
 	wiphy->max_scan_ssids = WLAN_SCAN_PARAMS_MAX_SSID;
@@ -8739,6 +9101,9 @@ static int ath12k_mac_hw_register(struct ath12k_hw *ah)
 
 	wiphy->iftype_ext_capab = ath12k_iftypes_ext_capa;
 	wiphy->num_iftype_ext_capab = ARRAY_SIZE(ath12k_iftypes_ext_capa);
+
+	wiphy->mbssid_max_interfaces = TARGET_NUM_VDEVS;
+	wiphy->ema_max_profile_periodicity = TARGET_EMA_MAX_PROFILE_PERIOD;
 
 	if (is_6ghz) {
 		wiphy_ext_feature_set(wiphy,
