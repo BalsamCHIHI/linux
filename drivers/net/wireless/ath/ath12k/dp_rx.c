@@ -17,6 +17,7 @@
 #include "dp_tx.h"
 #include "peer.h"
 #include "dp_mon.h"
+#include "debugfs_htt_stats.h"
 
 #define ATH12K_DP_RX_FRAGMENT_TIMEOUT_MS (2 * HZ)
 
@@ -1268,10 +1269,10 @@ static int ath12k_htt_tlv_ppdu_stats_parse(struct ath12k_base *ab,
 	return 0;
 }
 
-static int ath12k_dp_htt_tlv_iter(struct ath12k_base *ab, const void *ptr, size_t len,
-				  int (*iter)(struct ath12k_base *ar, u16 tag, u16 len,
-					      const void *ptr, void *data),
-				  void *data)
+int ath12k_dp_htt_tlv_iter(struct ath12k_base *ab, const void *ptr, size_t len,
+			   int (*iter)(struct ath12k_base *ar, u16 tag, u16 len,
+				       const void *ptr, void *data),
+			   void *data)
 {
 	const struct htt_tlv *tlv;
 	const void *begin = ptr;
@@ -1741,6 +1742,7 @@ void ath12k_dp_htt_htc_t2h_msg_handler(struct ath12k_base *ab,
 		ath12k_htt_pull_ppdu_stats(ab, skb);
 		break;
 	case HTT_T2H_MSG_TYPE_EXT_STATS_CONF:
+		ath12k_debugfs_htt_ext_stats_handler(ab, skb);
 		break;
 	case HTT_T2H_MSG_TYPE_MLO_TIMESTAMP_OFFSET_IND:
 		ath12k_htt_mlo_offset_event_handler(ab, skb);
@@ -2628,7 +2630,7 @@ try_again:
 		if (!desc_info) {
 			desc_info = ath12k_dp_get_rx_desc(ab, cookie);
 			if (!desc_info) {
-				ath12k_warn(ab, "Invalid cookie in manual desc retrieval");
+				ath12k_warn(ab, "Rx, invalid cookie 0x%x\n", cookie);
 				continue;
 			}
 		}
@@ -3326,7 +3328,7 @@ ath12k_dp_process_rx_err_buf(struct ath12k *ar, struct hal_reo_dest_ring *desc,
 	if (!desc_info) {
 		desc_info = ath12k_dp_get_rx_desc(ab, cookie);
 		if (!desc_info) {
-			ath12k_warn(ab, "Invalid cookie in manual desc retrieval");
+			ath12k_warn(ab, "Rx Exception, invalid cookie 0x%x\n", cookie);
 			return -EINVAL;
 		}
 	}
@@ -3745,7 +3747,8 @@ int ath12k_dp_rx_process_wbm_err(struct ath12k_base *ab,
 		if (!desc_info) {
 			desc_info = ath12k_dp_get_rx_desc(ab, err_info.cookie);
 			if (!desc_info) {
-				ath12k_warn(ab, "Invalid cookie in manual desc retrieval");
+				ath12k_warn(ab, "WBM Rx err, invalid cookie 0x%x\n",
+					    err_info.cookie);
 				continue;
 			}
 		}
