@@ -27,6 +27,7 @@
 #include "dbring.h"
 #include "fw.h"
 #include "acpi.h"
+#include "wow.h"
 
 #define SM(_v, _f) (((_v) << _f##_LSB) & _f##_MASK)
 
@@ -228,6 +229,30 @@ struct ath12k_vif_cache {
 	u32 bss_conf_changed;
 };
 
+#define ATH12K_IPV6_UC_TYPE     0
+#define ATH12K_IPV6_AC_TYPE     1
+
+#define ATH12K_IPV6_MAX_COUNT   16
+#define ATH12K_IPV4_MAX_COUNT   2
+
+struct ath12k_arp_ns_offload {
+	u8  ipv4_addr[ATH12K_IPV4_MAX_COUNT][4];
+	u32 ipv4_count;
+	u32 ipv6_count;
+	u8  ipv6_addr[ATH12K_IPV6_MAX_COUNT][16];
+	u8  self_ipv6_addr[ATH12K_IPV6_MAX_COUNT][16];
+	u8  ipv6_type[ATH12K_IPV6_MAX_COUNT];
+	bool ipv6_valid[ATH12K_IPV6_MAX_COUNT];
+	u8  mac_addr[ETH_ALEN];
+};
+
+struct ath12k_rekey_data {
+	u8 kck[NL80211_KCK_LEN];
+	u8 kek[NL80211_KCK_LEN];
+	u64 replay_ctr;
+	bool enable_offload;
+};
+
 struct ath12k_vif {
 	u32 vdev_id;
 	enum wmi_vdev_type vdev_type;
@@ -284,6 +309,8 @@ struct ath12k_vif {
 	u32 punct_bitmap;
 	bool ps;
 	struct ath12k_vif_cache *cache;
+	struct ath12k_arp_ns_offload *arp_ns_offload;
+	struct ath12k_rekey_data rekey_data;
 };
 
 struct ath12k_vif_iter {
@@ -605,6 +632,9 @@ struct ath12k {
 	struct work_struct wmi_mgmt_tx_work;
 	struct sk_buff_head wmi_mgmt_tx_queue;
 
+	struct ath12k_wow wow;
+	struct completion target_suspend;
+	bool target_suspend_ack;
 	struct ath12k_per_peer_tx_stats peer_tx_stats;
 	struct list_head ppdu_stats_info;
 	u32 ppdu_stat_list_depth;
@@ -624,6 +654,8 @@ struct ath12k {
 
 	u32 freq_low;
 	u32 freq_high;
+
+	bool nlo_enabled;
 };
 
 struct ath12k_hw {
@@ -763,6 +795,11 @@ struct ath12k_base {
 		enum ath12k_bus bus;
 		const struct ath12k_hif_ops *ops;
 	} hif;
+
+	struct {
+		struct completion wakeup_completed;
+		u32 wmi_conf_rx_decap_mode;
+	} wow;
 
 	struct ath12k_ce ce;
 	struct timer_list rx_replenish_retry;
