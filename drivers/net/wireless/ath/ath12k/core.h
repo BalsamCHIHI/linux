@@ -1169,4 +1169,10 @@ void ath12k_dec_num_core_started(struct ath12k_base *ab)
 	ab->ag->num_started--;
 }
 
+static inline
+struct ath12k_base *ath12k_ag_to_ab(struct ath12k_hw_group *ag,
+				    u8 device_id)
+{
+	return ag->ab[device_id];
+}
 #endif /* _CORE_H_ */
