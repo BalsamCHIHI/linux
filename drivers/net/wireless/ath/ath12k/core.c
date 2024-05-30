@@ -1059,8 +1059,6 @@ static void ath12k_core_post_reconfigure_recovery(struct ath12k_base *ab)
 				mutex_unlock(&ar->conf_mutex);
 			}
 
-			/* Restart after all the link/radio halt */
-			ieee80211_restart_hw(ah->hw);
 			break;
 		case ATH12K_HW_STATE_OFF:
 			ath12k_warn(ab,
@@ -1087,7 +1085,8 @@ static void ath12k_core_post_reconfigure_recovery(struct ath12k_base *ab)
 static void ath12k_core_restart(struct work_struct *work)
 {
 	struct ath12k_base *ab = container_of(work, struct ath12k_base, restart_work);
-	int ret;
+	struct ath12k_hw *ah;
+	int ret, i;
 
 	ret = ath12k_core_reconfigure_on_crash(ab);
 	if (ret) {
@@ -1095,8 +1094,12 @@ static void ath12k_core_restart(struct work_struct *work)
 		return;
 	}
 
-	if (ab->is_reset)
-		complete_all(&ab->reconfigure_complete);
+	if (ab->is_reset) {
+		for (i = 0; i < ab->num_hw; i++) {
+			ah = ab->ah[i];
+			ieee80211_restart_hw(ah->hw);
+		}
+	}
 
 	complete(&ab->restart_completed);
 }
@@ -1150,19 +1153,13 @@ static void ath12k_core_reset(struct work_struct *work)
 	ath12k_dbg(ab, ATH12K_DBG_BOOT, "reset starting\n");
 
 	ab->is_reset = true;
-	atomic_set(&ab->recovery_start_count, 0);
-	reinit_completion(&ab->recovery_start);
 	atomic_set(&ab->recovery_count, 0);
 
 	ath12k_core_pre_reconfigure_recovery(ab);
 
-	reinit_completion(&ab->reconfigure_complete);
 	ath12k_core_post_reconfigure_recovery(ab);
 
 	ath12k_dbg(ab, ATH12K_DBG_BOOT, "waiting recovery start...\n");
-
-	time_left = wait_for_completion_timeout(&ab->recovery_start,
-						ATH12K_RECOVER_START_TIMEOUT_HZ);
 
 	ath12k_hif_irq_disable(ab);
 	ath12k_hif_ce_irq_disable(ab);
@@ -1188,6 +1185,29 @@ int ath12k_core_pre_init(struct ath12k_base *ab)
 	return 0;
 }
 
+static int ath12k_core_panic_handler(struct notifier_block *nb,
+				     unsigned long action, void *data)
+{
+	struct ath12k_base *ab = container_of(nb, struct ath12k_base,
+					      panic_nb);
+
+	return ath12k_hif_panic_handler(ab);
+}
+
+static int ath12k_core_panic_notifier_register(struct ath12k_base *ab)
+{
+	ab->panic_nb.notifier_call = ath12k_core_panic_handler;
+
+	return atomic_notifier_chain_register(&panic_notifier_list,
+					      &ab->panic_nb);
+}
+
+static void ath12k_core_panic_notifier_unregister(struct ath12k_base *ab)
+{
+	atomic_notifier_chain_unregister(&panic_notifier_list,
+					 &ab->panic_nb);
+}
+
 int ath12k_core_init(struct ath12k_base *ab)
 {
 	int ret;
@@ -1198,11 +1218,17 @@ int ath12k_core_init(struct ath12k_base *ab)
 		return ret;
 	}
 
+	ret = ath12k_core_panic_notifier_register(ab);
+	if (ret)
+		ath12k_warn(ab, "failed to register panic handler: %d\n", ret);
+
 	return 0;
 }
 
 void ath12k_core_deinit(struct ath12k_base *ab)
 {
+	ath12k_core_panic_notifier_unregister(ab);
+
 	mutex_lock(&ab->core_lock);
 
 	ath12k_core_pdev_destroy(ab);
@@ -1246,8 +1272,6 @@ struct ath12k_base *ath12k_core_alloc(struct device *dev, size_t priv_size,
 	mutex_init(&ab->core_lock);
 	spin_lock_init(&ab->base_lock);
 	init_completion(&ab->reset_complete);
-	init_completion(&ab->reconfigure_complete);
-	init_completion(&ab->recovery_start);
 
 	INIT_LIST_HEAD(&ab->peers);
 	init_waitqueue_head(&ab->peer_mapping_wq);
