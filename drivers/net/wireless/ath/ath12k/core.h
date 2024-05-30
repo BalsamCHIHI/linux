@@ -14,6 +14,7 @@
 #include <linux/dmi.h>
 #include <linux/ctype.h>
 #include <linux/firmware.h>
+#include <linux/panic_notifier.h>
 #include "qmi.h"
 #include "htc.h"
 #include "wmi.h"
@@ -473,6 +474,7 @@ struct ath12k_fw_stats {
 
 struct ath12k_debug {
 	struct dentry *debugfs_pdev;
+	struct dentry *debugfs_pdev_symlink;
 };
 
 struct ath12k_per_peer_tx_stats {
@@ -628,8 +630,6 @@ struct ath12k {
 
 struct ath12k_hw {
 	struct ieee80211_hw *hw;
-	struct ath12k_base *ab;
-
 	/* Protect the write operation of the hardware state ath12k_hw::state
 	 * between hardware start<=>reconfigure<=>stop transitions.
 	 */
@@ -689,6 +689,7 @@ struct mlo_timestamp {
 struct ath12k_pdev {
 	struct ath12k *ar;
 	u32 pdev_id;
+	u32 hw_link_id;
 	struct ath12k_pdev_cap cap;
 	u8 mac_addr[ETH_ALEN];
 	struct mlo_timestamp timestamp;
@@ -846,11 +847,8 @@ struct ath12k_base {
 	struct work_struct reset_work;
 	atomic_t reset_count;
 	atomic_t recovery_count;
-	atomic_t recovery_start_count;
 	bool is_reset;
 	struct completion reset_complete;
-	struct completion reconfigure_complete;
-	struct completion recovery_start;
 	/* continuous recovery fail count */
 	atomic_t fail_cont_count;
 	unsigned long reset_fail_timeout;
@@ -923,6 +921,8 @@ struct ath12k_base {
 	} acpi;
 
 #endif /* CONFIG_ACPI */
+
+	struct notifier_block panic_nb;
 
 	/* must be last */
 	u8 drv_priv[] __aligned(sizeof(void *));
