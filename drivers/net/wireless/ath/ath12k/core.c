@@ -1467,6 +1467,7 @@ ath12k_core_hw_group_alloc(u8 id, u8 max_devices)
 	ag->num_devices = max_devices;
 	list_add(&ag->list, &ath12k_hw_group_list);
 	mutex_init(&ag->mutex_lock);
+	ag->mlo_capable = ATH12K_INTRA_DEVICE_MLO_SUPPORT;
 
 	return ag;
 }
@@ -1481,10 +1482,26 @@ static void ath12k_core_hw_group_free(struct ath12k_hw_group *ag)
 	mutex_unlock(&ath12k_ag_list_lock);
 }
 
+/* This function needs to be used only when dt has multi chip grouping information */
+static struct ath12k_hw_group *ath12k_core_hw_group_find_by_id(u8 group_id)
+{
+	struct ath12k_hw_group *ag;
+
+	/* group ids will be unique only for multi chip group */
+	list_for_each_entry(ag, &ath12k_hw_group_list, list) {
+		if (group_id == ag->id && ag->num_devices > 1)
+			return ag;
+	}
+
+	return NULL;
+}
+
 static struct ath12k_hw_group *ath12k_core_assign_hw_group(struct ath12k_base *ab)
 {
 	struct ath12k_hw_group *ag;
-	u32 group_id = ATH12K_INVALID_GROUP_ID;
+	u32 group_id = ATH12K_INVALID_GROUP_ID, num_devices;
+	struct device *dev = ab->dev;
+	struct device_node *mlo;
 
 	lockdep_assert_held(&ath12k_ag_list_lock);
 
@@ -1498,6 +1515,53 @@ static struct ath12k_hw_group *ath12k_core_assign_hw_group(struct ath12k_base *a
 	 * of multiple devices is not involved. Thus, single device is added to device
 	 * group.
 	 */
+	mlo = of_parse_phandle(dev->of_node, "qcom,wsi", 0);
+	if (!mlo) {
+		goto invalid_group;
+	} else {
+		if (of_property_read_u32(mlo, "id", &group_id))
+			goto invalid_group;
+	}
+
+	if (of_property_read_u32(mlo, "num_devices", &num_devices)) {
+		group_id = ATH12K_INVALID_GROUP_ID;
+		goto invalid_group;
+	}
+
+	if (num_devices > ATH12K_MAX_SOCS) {
+		ath12k_warn(ab, "num_devices advertised %d is more than limit %d\n",
+			    num_devices, ATH12K_MAX_SOCS);
+		group_id = ATH12K_INVALID_GROUP_ID;
+		goto invalid_group;
+	}
+
+	/* currently only one group of multiple devices are supported,
+	 * since we use group id ATH12K_INVALID_GROUP_ID for single
+	 * device group which didn't have dt entry, there could be many
+	 * groups with same group id, i.e ATH12K_INVALID_GROUP_ID. So
+	 * default group id of ATH12K_INVALID_GROUP_ID combined with
+	 * num devices in ath12k_hw_group determines if the group is
+	 * multi device or single device group
+	 */
+	ag = ath12k_core_hw_group_find_by_id(group_id);
+	if (!ag) {
+		ag = ath12k_core_hw_group_alloc(group_id, num_devices);
+		if (!ag) {
+			ath12k_warn(ab, "unable to create new hw group\n");
+			return NULL;
+		}
+		ag->mlo_capable = ATH12K_INTER_DEVICE_MLO_SUPPORT;
+		goto exit;
+	} else if (test_bit(ATH12K_GROUP_FLAG_UNREGISTER, &ag->flags)) {
+		ath12k_dbg(ab, ATH12K_DBG_BOOT, "group id %d in unregister state\n",
+			   ag->id);
+		group_id = ATH12K_INVALID_GROUP_ID;
+		goto invalid_group;
+	} else {
+		goto exit;
+	}
+
+invalid_group:
 	ag = ath12k_core_hw_group_alloc(group_id, 1);
 	if (!ag) {
 		ath12k_warn(ab, "unable to create new hw group\n");
@@ -1505,10 +1569,16 @@ static struct ath12k_hw_group *ath12k_core_assign_hw_group(struct ath12k_base *a
 	}
 	ath12k_dbg(ab, ATH12K_DBG_BOOT, "Single device is added to hardware group\n");
 
+exit:
+	if (ag->num_probed >= ag->num_devices) {
+		ath12k_warn(ab, "unable to add new device to group, max limit reached\n");
+		group_id = ATH12K_INVALID_GROUP_ID;
+		goto invalid_group;
+	}
+
 	ab->device_id = ag->num_probed++;
 	ag->ab[ab->device_id] = ab;
 	ab->ag = ag;
-	ag->mlo_capable = ATH12K_INTRA_DEVICE_MLO_SUPPORT;
 
 	return ag;
 }
@@ -1575,6 +1645,8 @@ static void ath12k_core_hw_group_cleanup(struct ath12k_hw_group *ag)
 		return;
 
 	mutex_lock(&ag->mutex_lock);
+	set_bit(ATH12K_GROUP_FLAG_UNREGISTER, &ag->flags);
+
 	ath12k_core_hw_group_stop(ag);
 
 	for (i = 0; i < ag->num_devices; i++) {
