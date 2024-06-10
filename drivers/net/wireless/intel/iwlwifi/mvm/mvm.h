@@ -1309,6 +1309,9 @@ struct iwl_mvm {
 	struct iwl_phy_specific_cfg phy_filters;
 #endif
 
+	/* report rx timestamp in ptp clock time */
+	bool rx_ts_ptp;
+
 	unsigned long last_6ghz_passive_scan_jiffies;
 	unsigned long last_reset_or_resume_time_jiffies;
 
@@ -2958,4 +2961,10 @@ iwl_mvm_bt_coex_calculate_esr_mode(struct iwl_mvm *mvm,
 				   bool primary);
 int iwl_mvm_esr_non_bss_link(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 			     unsigned int link_id, bool active);
+
+void
+iwl_mvm_send_ap_tx_power_constraint_cmd(struct iwl_mvm *mvm,
+					struct ieee80211_vif *vif,
+					struct ieee80211_bss_conf *bss_conf,
+					bool is_ap);
 #endif /* __IWL_MVM_H__ */
