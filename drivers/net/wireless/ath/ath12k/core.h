@@ -474,6 +474,7 @@ struct ath12k_fw_stats {
 
 struct ath12k_debug {
 	struct dentry *debugfs_pdev;
+	struct dentry *debugfs_pdev_symlink;
 };
 
 struct ath12k_per_peer_tx_stats {
@@ -629,8 +630,6 @@ struct ath12k {
 
 struct ath12k_hw {
 	struct ieee80211_hw *hw;
-	struct ath12k_base *ab;
-
 	/* Protect the write operation of the hardware state ath12k_hw::state
 	 * between hardware start<=>reconfigure<=>stop transitions.
 	 */
@@ -848,11 +847,8 @@ struct ath12k_base {
 	struct work_struct reset_work;
 	atomic_t reset_count;
 	atomic_t recovery_count;
-	atomic_t recovery_start_count;
 	bool is_reset;
 	struct completion reset_complete;
-	struct completion reconfigure_complete;
-	struct completion recovery_start;
 	/* continuous recovery fail count */
 	atomic_t fail_cont_count;
 	unsigned long reset_fail_timeout;
