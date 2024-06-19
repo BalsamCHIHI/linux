@@ -28,6 +28,9 @@
 #include "dbring.h"
 #include "fw.h"
 #include "acpi.h"
+#include "debugfs_htt_stats.h"
+#include "wow.h"
+#include "coredump.h"
 
 #define SM(_v, _f) (((_v) << _f##_LSB) & _f##_MASK)
 
@@ -229,6 +232,13 @@ struct ath12k_vif_cache {
 	u32 bss_conf_changed;
 };
 
+struct ath12k_rekey_data {
+	u8 kck[NL80211_KCK_LEN];
+	u8 kek[NL80211_KCK_LEN];
+	u64 replay_ctr;
+	bool enable_offload;
+};
+
 struct ath12k_vif {
 	u32 vdev_id;
 	enum wmi_vdev_type vdev_type;
@@ -285,6 +295,7 @@ struct ath12k_vif {
 	u32 punct_bitmap;
 	bool ps;
 	struct ath12k_vif_cache *cache;
+	struct ath12k_rekey_data rekey_data;
 };
 
 struct ath12k_vif_iter {
@@ -472,9 +483,17 @@ struct ath12k_fw_stats {
 	struct list_head bcn;
 };
 
+struct ath12k_dbg_htt_stats {
+	enum ath12k_dbg_htt_ext_stats_type type;
+	u32 cfg_param[4];
+	u8 reset;
+	struct debug_htt_stats_req *stats_req;
+};
+
 struct ath12k_debug {
 	struct dentry *debugfs_pdev;
 	struct dentry *debugfs_pdev_symlink;
+	struct ath12k_dbg_htt_stats htt_stats;
 };
 
 struct ath12k_per_peer_tx_stats {
@@ -607,6 +626,9 @@ struct ath12k {
 	struct work_struct wmi_mgmt_tx_work;
 	struct sk_buff_head wmi_mgmt_tx_queue;
 
+	struct ath12k_wow wow;
+	struct completion target_suspend;
+	bool target_suspend_ack;
 	struct ath12k_per_peer_tx_stats peer_tx_stats;
 	struct list_head ppdu_stats_info;
 	u32 ppdu_stat_list_depth;
@@ -626,6 +648,8 @@ struct ath12k {
 
 	u32 freq_low;
 	u32 freq_high;
+
+	bool nlo_enabled;
 };
 
 struct ath12k_hw {
@@ -753,6 +777,10 @@ struct ath12k_base {
 	/* HW channel counters frequency value in hertz common to all MACs */
 	u32 cc_freq_hz;
 
+	struct ath12k_dump_file_data *dump_data;
+	size_t ath12k_coredump_len;
+	struct work_struct dump_work;
+
 	struct ath12k_htc htc;
 
 	struct ath12k_dp dp;
@@ -764,6 +792,11 @@ struct ath12k_base {
 		enum ath12k_bus bus;
 		const struct ath12k_hif_ops *ops;
 	} hif;
+
+	struct {
+		struct completion wakeup_completed;
+		u32 wmi_conf_rx_decap_mode;
+	} wow;
 
 	struct ath12k_ce ce;
 	struct timer_list rx_replenish_retry;
