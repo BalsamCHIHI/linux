@@ -988,6 +988,7 @@ exit:
 		case ATH12K_HW_STATE_RESTARTING:
 		case ATH12K_HW_STATE_RESTARTED:
 		case ATH12K_HW_STATE_WEDGED:
+		case ATH12K_HW_STATE_TM:
 			ath12k_warn(ar->ab, "encountered unexpected device state %d on resume, cannot recover\n",
 				    ah->state);
 			ret = -EIO;
