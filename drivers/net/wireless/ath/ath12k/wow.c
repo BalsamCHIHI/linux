@@ -186,7 +186,7 @@ ath12k_wow_convert_8023_to_80211(struct ath12k *ar,
 	if (eth_pkt_ofs < ETH_ALEN) {
 		pkt_ofs = eth_pkt_ofs + a1_ofs;
 
-		if (eth_pkt_ofs + eth_pat_len < ETH_ALEN) {
+		if (eth_pat_len < ETH_ALEN - eth_pkt_ofs) {
 			memcpy(pat, eth_pat, eth_pat_len);
 			memcpy(bytemask, eth_bytemask, eth_pat_len);
 
@@ -228,7 +228,7 @@ ath12k_wow_convert_8023_to_80211(struct ath12k *ar,
 	} else if (eth_pkt_ofs < prot_ofs) {
 		pkt_ofs = eth_pkt_ofs - ETH_ALEN + a3_ofs;
 
-		if (eth_pkt_ofs + eth_pat_len < prot_ofs) {
+		if (eth_pat_len < prot_ofs - eth_pkt_ofs) {
 			memcpy(pat, eth_pat, eth_pat_len);
 			memcpy(bytemask, eth_bytemask, eth_pat_len);
 
@@ -988,6 +988,7 @@ exit:
 		case ATH12K_HW_STATE_RESTARTING:
 		case ATH12K_HW_STATE_RESTARTED:
 		case ATH12K_HW_STATE_WEDGED:
+		case ATH12K_HW_STATE_TM:
 			ath12k_warn(ar->ab, "encountered unexpected device state %d on resume, cannot recover\n",
 				    ah->state);
 			ret = -EIO;
