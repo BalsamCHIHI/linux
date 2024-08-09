@@ -3140,6 +3140,42 @@ static int ath12k_mac_fils_discovery(struct ath12k_link_vif *arvif,
 	return ret;
 }
 
+static void ath12k_mac_op_vif_cfg_changed(struct ieee80211_hw *hw,
+					  struct ieee80211_vif *vif,
+					  u64 changed)
+{
+	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
+	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
+	unsigned long links = ahvif->links_map;
+	struct ath12k_link_vif *arvif;
+	struct ath12k *ar;
+	u8 link_id;
+
+	mutex_lock(&ah->conf_mutex);
+	if (changed & BSS_CHANGED_SSID && vif->type == NL80211_IFTYPE_AP) {
+		ahvif->u.ap.ssid_len = vif->cfg.ssid_len;
+		if (vif->cfg.ssid_len)
+			memcpy(ahvif->u.ap.ssid, vif->cfg.ssid, vif->cfg.ssid_len);
+	}
+
+	if (changed & BSS_CHANGED_ASSOC) {
+		for_each_set_bit(link_id, &links, IEEE80211_MLD_MAX_NUM_LINKS) {
+			arvif = rcu_dereference_protected(ahvif->link[link_id],
+							  lockdep_is_held(&ah->conf_mutex));
+			if (!arvif || !arvif->ar)
+				continue;
+			ar = arvif->ar;
+			mutex_lock(&ar->conf_mutex);
+			if (vif->cfg.assoc)
+				ath12k_bss_assoc(ar, arvif, &vif->bss_conf);
+			else
+				ath12k_bss_disassoc(ar, arvif);
+			mutex_unlock(&ar->conf_mutex);
+		}
+	}
+	mutex_unlock(&ah->conf_mutex);
+}
+
 static void ath12k_mac_vif_setup_ps(struct ath12k_link_vif *arvif)
 {
 	struct ath12k *ar = arvif->ar;
@@ -3487,33 +3523,27 @@ static void ath12k_ahvif_put_link_cache(struct ath12k_vif *ahvif, u8 link_id)
 	ahvif->cache[link_id] = NULL;
 }
 
-static void ath12k_mac_op_bss_info_changed(struct ieee80211_hw *hw,
-					   struct ieee80211_vif *vif,
-					   struct ieee80211_bss_conf *info,
-					   u64 changed)
+static void ath12k_mac_op_link_info_changed(struct ieee80211_hw *hw,
+					    struct ieee80211_vif *vif,
+					    struct ieee80211_bss_conf *info,
+					    u64 changed)
 {
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
 	struct ath12k *ar;
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_vif_cache *cache;
 	struct ath12k_link_vif *arvif;
+	u8 link_id = info->link_id;
 
 	mutex_lock(&ah->conf_mutex);
-	/* TODO use info->link_id and fetch corresponding ahvif->link[]
-	 * with MLO support.
-	 */
-	arvif = &ahvif->deflink;
-	ar = ath12k_get_ar_by_vif(hw, vif);
-
+	arvif = rcu_dereference_protected(ahvif->link[link_id],
+					  lockdep_is_held(&ah->conf_mutex));
 	/* if the vdev is not created on a certain radio,
 	 * cache the info to be updated later on vdev creation
 	 */
 
-	if (!ar) {
-		/* TODO Once link vif is fetched based on link id from
-		 * info, avoid using ATH12K_DEFAULT_LINK_ID.
-		 */
-		cache = ath12k_ahvif_get_link_cache(ahvif, ATH12K_DEFAULT_LINK_ID);
+	if (!arvif || !arvif->is_created) {
+		cache = ath12k_ahvif_get_link_cache(ahvif, link_id);
 		if (!cache) {
 			mutex_unlock(&ah->conf_mutex);
 			return;
@@ -3523,6 +3553,7 @@ static void ath12k_mac_op_bss_info_changed(struct ieee80211_hw *hw,
 		return;
 	}
 
+	ar = arvif->ar;
 	mutex_lock(&ar->conf_mutex);
 
 	ath12k_mac_bss_info_changed(ar, arvif, info, changed);
@@ -8981,7 +9012,8 @@ static const struct ieee80211_ops ath12k_ops = {
 	.remove_interface		= ath12k_mac_op_remove_interface,
 	.update_vif_offload		= ath12k_mac_op_update_vif_offload,
 	.config                         = ath12k_mac_op_config,
-	.bss_info_changed               = ath12k_mac_op_bss_info_changed,
+	.link_info_changed              = ath12k_mac_op_link_info_changed,
+	.vif_cfg_changed		= ath12k_mac_op_vif_cfg_changed,
 	.configure_filter		= ath12k_mac_op_configure_filter,
 	.hw_scan                        = ath12k_mac_op_hw_scan,
 	.cancel_hw_scan                 = ath12k_mac_op_cancel_hw_scan,
