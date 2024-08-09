@@ -3511,14 +3511,30 @@ static void ath12k_mac_bss_info_changed(struct ath12k *ar,
 static struct ath12k_vif_cache *ath12k_ahvif_get_link_cache(struct ath12k_vif *ahvif,
 							    u8 link_id)
 {
-	if (!ahvif->cache[link_id])
+	if (!ahvif->cache[link_id]) {
 		ahvif->cache[link_id] = kzalloc(sizeof(*ahvif->cache[0]), GFP_KERNEL);
+		if (ahvif->cache[link_id])
+			INIT_LIST_HEAD(&ahvif->cache[link_id]->key_conf.list);
+	}
 
 	return ahvif->cache[link_id];
 }
 
+static void ath12k_ahvif_put_link_key_cache(struct ath12k_vif_cache *cache)
+{
+	struct ath12k_key_conf *key_conf, *tmp;
+
+	if (!cache || list_empty(&cache->key_conf.list))
+		return;
+	list_for_each_entry_safe(key_conf, tmp, &cache->key_conf.list, list) {
+		list_del(&key_conf->list);
+		kfree(key_conf);
+	}
+}
+
 static void ath12k_ahvif_put_link_cache(struct ath12k_vif *ahvif, u8 link_id)
 {
+	ath12k_ahvif_put_link_key_cache(ahvif->cache[link_id]);
 	kfree(ahvif->cache[link_id]);
 	ahvif->cache[link_id] = NULL;
 }
@@ -4182,6 +4198,39 @@ exit:
 	return ret;
 }
 
+static int ath12k_mac_update_key_cache(struct ath12k_vif_cache *cache,
+				       enum set_key_cmd cmd,
+				       struct ieee80211_sta *sta,
+				       struct ieee80211_key_conf *key)
+{
+	struct ath12k_key_conf *key_conf = NULL, *tmp;
+
+	if (cmd == SET_KEY) {
+		key_conf = kzalloc(sizeof(*key_conf), GFP_KERNEL);
+
+		if (!key_conf)
+			return -ENOMEM;
+
+		key_conf->cmd = cmd;
+		key_conf->sta = sta;
+		key_conf->key = key;
+		list_add_tail(&key_conf->list,
+			      &cache->key_conf.list);
+	}
+	if (list_empty(&cache->key_conf.list))
+		return 0;
+	list_for_each_entry_safe(key_conf, tmp, &cache->key_conf.list, list) {
+		if (key_conf->key == key) {
+			/* DEL key for an old SET key which driver hasn't flushed yet.
+			 */
+			list_del(&key_conf->list);
+			kfree(key_conf);
+			break;
+		}
+	}
+	return 0;
+}
+
 static int ath12k_mac_op_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 				 struct ieee80211_vif *vif, struct ieee80211_sta *sta,
 				 struct ieee80211_key_conf *key)
@@ -4192,11 +4241,11 @@ static int ath12k_mac_op_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 	struct ath12k_link_sta *arsta = NULL;
 	struct ath12k_vif_cache *cache;
 	struct ath12k_sta *ahsta;
-	struct ath12k *ar;
+	unsigned long links;
+	u8 link_id;
 	int ret;
 
 	mutex_lock(&ah->conf_mutex);
-	arvif = &ahvif->deflink;
 	/* BIP needs to be done in software */
 	if (key->cipher == WLAN_CIPHER_SUITE_AES_CMAC ||
 	    key->cipher == WLAN_CIPHER_SUITE_BIP_GMAC_128 ||
@@ -4211,41 +4260,68 @@ static int ath12k_mac_op_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 		return -ENOSPC;
 	}
 
-	ar = ath12k_get_ar_by_vif(hw, vif);
-	if (!ar) {
-		/* ar is expected to be valid when sta ptr is available */
-		if (sta) {
-			mutex_unlock(&ah->conf_mutex);
-			WARN_ON_ONCE(1);
-			return -EINVAL;
-		}
-
-		cache = ath12k_ahvif_get_link_cache(ahvif, ATH12K_DEFAULT_LINK_ID);
-		if (!cache) {
-			mutex_unlock(&ah->conf_mutex);
-			return -ENOSPC;
-		}
-		cache->key_conf.cmd = cmd;
-		cache->key_conf.key = key;
-		cache->key_conf.changed = true;
-		mutex_unlock(&ah->conf_mutex);
-		return 0;
-	}
-
 	if (sta) {
 		ahsta = ath12k_sta_to_ahsta(sta);
-		arsta = &ahsta->deflink;
+		/* For an ML STA Pairwise key is same for all associated link Stations,
+		 * hence do set key for all link STAs.
+		 */
+		if (sta->mlo) {
+			links = sta->valid_links;
+			for_each_set_bit(link_id, &links, IEEE80211_MLD_MAX_NUM_LINKS) {
+				arvif = rcu_dereference_protected(ahvif->link[link_id],
+								  lockdep_is_held(&ah->conf_mutex));
+				arsta = rcu_dereference_protected(ahsta->link[link_id],
+								  lockdep_is_held(&ah->conf_mutex));
+				/* arvif and arsta are expected to be valid when
+				 * STA is present.
+				 */
+				if (WARN_ON(!arvif || !arsta))
+					continue;
+				mutex_lock(&arvif->ar->conf_mutex);
+				ret = ath12k_mac_set_key(arvif->ar, cmd, arvif,
+							 arsta, key);
+				mutex_unlock(&arvif->ar->conf_mutex);
+				if (ret)
+					break;
+			}
+		} else {
+			arsta = &ahsta->deflink;
+			arvif = arsta->arvif;
+			if (WARN_ON(!arvif)) {
+				ret = -EINVAL;
+				goto out;
+			}
+
+			mutex_lock(&arvif->ar->conf_mutex);
+			ret = ath12k_mac_set_key(arvif->ar, cmd, arvif, arsta, key);
+			mutex_unlock(&arvif->ar->conf_mutex);
+		}
+	} else {
+		if (key->link_id >= 0 && key->link_id < IEEE80211_MLD_MAX_NUM_LINKS) {
+			link_id = key->link_id;
+			arvif = rcu_dereference_protected(ahvif->link[link_id],
+							  lockdep_is_held(&ah->conf_mutex));
+		} else {
+			link_id = 0;
+			arvif = &ahvif->deflink;
+		}
+
+		if (!arvif || !arvif->is_created) {
+			cache = ath12k_ahvif_get_link_cache(ahvif, link_id);
+			if (!cache) {
+				mutex_unlock(&ah->conf_mutex);
+				return -ENOSPC;
+			}
+			ret = ath12k_mac_update_key_cache(cache, cmd, sta, key);
+			mutex_unlock(&ah->conf_mutex);
+			return ret;
+		}
+
+		mutex_lock(&arvif->ar->conf_mutex);
+		ret = ath12k_mac_set_key(arvif->ar, cmd, arvif, NULL, key);
+		mutex_unlock(&arvif->ar->conf_mutex);
 	}
-
-	/* Note: Currently only deflink of ahvif and ahsta are used here,
-	 * once MLO support is added the allocated links (i.e ahvif->links[])
-	 * should be use based on link id passed from mac80211 and such link
-	 * access needs to be protected with ah->conf_mutex.
-	 */
-
-	mutex_lock(&ar->conf_mutex);
-	ret = ath12k_mac_set_key(ar, cmd, arvif, arsta, key);
-	mutex_unlock(&ar->conf_mutex);
+out:
 	mutex_unlock(&ah->conf_mutex);
 	return ret;
 }
@@ -6867,6 +6943,38 @@ err:
 	return ret;
 }
 
+static void ath12k_mac_vif_flush_key_cache(struct ath12k_link_vif *arvif)
+{
+	struct ath12k_key_conf *key_conf, *tmp;
+	struct ath12k_vif *ahvif = arvif->ahvif;
+	struct ath12k_hw *ah = ahvif->ah;
+	struct ath12k_sta *ahsta;
+	struct ath12k_link_sta *arsta;
+	struct ath12k_vif_cache *cache = ahvif->cache[arvif->link_id];
+	int ret;
+
+	list_for_each_entry_safe(key_conf, tmp, &cache->key_conf.list, list) {
+		arsta = NULL;
+		if (key_conf->sta) {
+			ahsta = ath12k_sta_to_ahsta(key_conf->sta);
+			arsta = rcu_dereference_protected(ahsta->link[arvif->link_id],
+							  lockdep_is_held(&ah->conf_mutex));
+			if (!arsta)
+				goto free_cache;
+		}
+
+		ret = ath12k_mac_set_key(arvif->ar, key_conf->cmd,
+					 arvif, arsta,
+					 key_conf->key);
+		if (ret)
+			ath12k_warn(arvif->ar->ab, "unable to apply set key param to vdev %d ret %d\n",
+				    arvif->vdev_id, ret);
+free_cache:
+		list_del(&key_conf->list);
+		kfree(key_conf);
+	}
+}
+
 static void ath12k_mac_vif_cache_flush(struct ath12k *ar, struct ath12k_link_vif *arvif)
 {
 	struct ath12k_vif *ahvif = arvif->ahvif;
@@ -6895,13 +7003,9 @@ static void ath12k_mac_vif_cache_flush(struct ath12k *ar, struct ath12k_link_vif
 					    cache->bss_conf_changed);
 	}
 
-	if (cache->key_conf.changed) {
-		ret = ath12k_mac_set_key(ar, cache->key_conf.cmd, arvif, NULL,
-					 cache->key_conf.key);
-		if (ret)
-			ath12k_warn(ab, "unable to apply set key param to vdev %d ret %d\n",
-				    arvif->vdev_id, ret);
-	}
+	if (!list_empty(&cache->key_conf.list))
+		ath12k_mac_vif_flush_key_cache(arvif);
+
 	ath12k_ahvif_put_link_cache(ahvif, arvif->link_id);
 }
 
