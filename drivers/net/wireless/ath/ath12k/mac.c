@@ -6714,8 +6714,25 @@ static void ath12k_mac_op_update_vif_offload(struct ieee80211_hw *hw,
 					     struct ieee80211_vif *vif)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
+	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
+	struct ath12k_link_vif *arvif;
+	unsigned long links;
+	int link_id;
 
-	ath12k_mac_update_vif_offload(&ahvif->deflink);
+	mutex_lock(&ah->conf_mutex);
+	if (vif->valid_links) {
+		links = vif->valid_links;
+		for_each_set_bit(link_id, &links, IEEE80211_MLD_MAX_NUM_LINKS) {
+			arvif = rcu_dereference_protected(ahvif->link[link_id],
+						lockdep_is_held(&ah->conf_mutex));
+			if (!(arvif && arvif->ar))
+				continue;
+			ath12k_mac_update_vif_offload(arvif);
+		}
+	} else {
+		ath12k_mac_update_vif_offload(&ahvif->deflink);
+	}
+	mutex_unlock(&ah->conf_mutex);
 }
 
 int ath12k_mac_vdev_create(struct ath12k *ar, struct ath12k_link_vif *arvif)
