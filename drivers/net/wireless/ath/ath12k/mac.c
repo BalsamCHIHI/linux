@@ -8238,7 +8238,7 @@ ath12k_mac_mlo_get_vdev_args(struct ath12k_link_vif *arvif,
 	rcu_read_lock();
 	ml_arg->enabled = true;
 
-	/* Driver always add a new link via VDEV START, FW takes
+	/* Driver always add new link via VDEV START, FW takes
 	 * care of internally adding this link to existing
 	 * link vdevs which are advertised as partners below
 	 */
