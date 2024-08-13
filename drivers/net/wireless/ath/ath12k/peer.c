@@ -377,9 +377,11 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 			ether_addr_copy(peer->ml_addr, sta->addr);
 			/* the assoc link is considered primary for now */
 			peer->primary_link = arsta->is_assoc_link;
+			peer->mlo = true;
 		} else {
 			peer->ml_peer_id = ATH12K_MLO_PEER_ID_INVALID;
 			peer->primary_link = true;
+			peer->mlo = false;
 		}
 	}
 
