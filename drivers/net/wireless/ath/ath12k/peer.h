@@ -49,6 +49,11 @@ struct ath12k_peer {
 	bool dp_setup_done;
 
 	u16 ml_peer_id;
+
+	/* any other ML info common for all partners can be added
+	 * here and would be same for all partner peers.
+	 */
+	u8 ml_addr[ETH_ALEN];
 };
 
 struct ath12k_ml_peer {
@@ -78,4 +83,6 @@ int ath12k_ml_peer_create(struct ath12k_hw *ah, struct ieee80211_sta *sta);
 int ath12k_ml_peer_delete(struct ath12k_hw *ah, struct ieee80211_sta *sta);
 int ath12k_ml_link_peers_delete(struct ath12k_vif *ahvif, struct ath12k_sta *ahsta);
 int ath12k_peer_delete_send(struct ath12k *ar, u32 vdev_id, const u8 *addr);
+void ath12k_peer_mlo_map_event(struct ath12k_base *ab, struct sk_buff *skb);
+void ath12k_peer_mlo_unmap_event(struct ath12k_base *ab, struct sk_buff *skb);
 #endif /* _PEER_H_ */
