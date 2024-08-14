@@ -1742,6 +1742,12 @@ void ath12k_dp_htt_htc_t2h_msg_handler(struct ath12k_base *ab,
 					HTT_T2H_PEER_UNMAP_INFO_PEER_ID);
 		ath12k_peer_unmap_event(ab, peer_id);
 		break;
+	case HTT_T2H_MSG_TYPE_MLO_RX_PEER_MAP:
+		ath12k_peer_mlo_map_event(ab, skb);
+		break;
+	case HTT_T2H_MSG_TYPE_MLO_RX_PEER_UNMAP:
+		ath12k_peer_mlo_unmap_event(ab, skb);
+		break;
 	case HTT_T2H_MSG_TYPE_PPDU_STATS_IND:
 		ath12k_htt_pull_ppdu_stats(ab, skb);
 		break;
