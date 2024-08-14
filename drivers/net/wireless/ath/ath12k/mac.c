@@ -4918,8 +4918,8 @@ static int ath12k_mac_station_remove(struct ath12k *ar,
 				     struct ath12k_link_sta *arsta)
 {
 	struct ath12k_vif *ahvif = arvif->ahvif;
-	int ret;
 	struct ieee80211_sta *sta = ath12k_ahsta_to_sta(arsta->ahsta);
+	int ret;
 
 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
 
@@ -10112,6 +10112,7 @@ static struct ath12k_hw *ath12k_mac_hw_allocate(struct ath12k_base *ab,
 	ah->num_radio = num_pdev_map;
 
 	mutex_init(&ah->hw_mutex);
+	INIT_LIST_HEAD(&ah->ml_peers);
 
 	for (i = 0; i < num_pdev_map; i++) {
 		ab = pdev_map[i].ab;
