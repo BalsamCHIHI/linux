@@ -8,6 +8,23 @@
 #include "peer.h"
 #include "debug.h"
 
+static struct ath12k_ml_peer *ath12k_ml_peer_find(struct ath12k_hw *ah,
+						  const u8 *addr)
+{
+	struct ath12k_ml_peer *ml_peer;
+
+	lockdep_assert_held(&ah->data_lock);
+
+	list_for_each_entry(ml_peer, &ah->ml_peers, list) {
+		if (!ether_addr_equal(ml_peer->addr, addr))
+			continue;
+
+		return ml_peer;
+	}
+
+	return NULL;
+}
+
 struct ath12k_peer *ath12k_peer_find(struct ath12k_base *ab, int vdev_id,
 				     const u8 *addr)
 {
@@ -339,5 +356,100 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 
 	spin_unlock_bh(&ar->ab->base_lock);
 
+	return 0;
+}
+
+static u16 ath12k_mac_alloc_ml_peer_id(struct ath12k_hw *ah)
+{
+	u16 ml_peer_id;
+
+	lockdep_assert_held(&ah->conf_mutex);
+
+	for (ml_peer_id = 0; ml_peer_id < ATH12K_MAX_MLO_PEERS; ml_peer_id++) {
+		if (test_bit(ml_peer_id, ah->free_ml_peer_id_map))
+			continue;
+
+		set_bit(ml_peer_id, ah->free_ml_peer_id_map);
+		break;
+	}
+
+	if (ml_peer_id == ATH12K_MAX_MLO_PEERS)
+		ml_peer_id = ATH12K_MLO_PEER_ID_INVALID;
+
+	return ml_peer_id;
+}
+
+int ath12k_ml_peer_create(struct ath12k_hw *ah, struct ieee80211_sta *sta)
+{
+	struct ath12k_sta *ahsta = ath12k_sta_to_ahsta(sta);
+	struct ath12k_ml_peer *ml_peer;
+
+	lockdep_assert_held(&ah->conf_mutex);
+
+	if (!sta->mlo)
+		return -EINVAL;
+
+	spin_lock_bh(&ah->data_lock);
+	ml_peer = ath12k_ml_peer_find(ah, sta->addr);
+	if (ml_peer) {
+		spin_unlock_bh(&ah->data_lock);
+		ath12k_err(NULL, "ML peer(id=%d) exists already, unable to add new entry for %pM",
+			   ml_peer->id, sta->addr);
+		return -EEXIST;
+	}
+
+	ml_peer = kzalloc(sizeof(*ml_peer), GFP_ATOMIC);
+	if (!ml_peer) {
+		spin_unlock_bh(&ah->data_lock);
+		ath12k_err(NULL, "unable to allocate new ML peer for %pM",
+			   sta->addr);
+		return -ENOMEM;
+	}
+
+	ahsta->ml_peer_id = ath12k_mac_alloc_ml_peer_id(ah);
+
+	if (ahsta->ml_peer_id == ATH12K_MLO_PEER_ID_INVALID) {
+		kfree(ml_peer);
+		spin_unlock_bh(&ah->data_lock);
+		ath12k_err(NULL, "unable to allocate ml peer id for sta %pM", sta->addr);
+		return -ENOMEM;
+	}
+
+	ether_addr_copy(ml_peer->addr, sta->addr);
+	ml_peer->id = ahsta->ml_peer_id;
+	list_add(&ml_peer->list, &ah->ml_peers);
+	spin_unlock_bh(&ah->data_lock);
+
+	ath12k_dbg(NULL, ATH12K_DBG_MAC, "ML peer created for %pM id %d\n",
+		   sta->addr, ahsta->ml_peer_id);
+	return 0;
+}
+
+int ath12k_ml_peer_delete(struct ath12k_hw *ah, struct ieee80211_sta *sta)
+{
+	struct ath12k_sta *ahsta = ath12k_sta_to_ahsta(sta);
+	struct ath12k_ml_peer *ml_peer;
+
+	lockdep_assert_held(&ah->conf_mutex);
+	if (!sta->mlo)
+		return -EINVAL;
+
+	clear_bit(ahsta->ml_peer_id, ah->free_ml_peer_id_map);
+	ahsta->ml_peer_id = ATH12K_MLO_PEER_ID_INVALID;
+
+	spin_lock_bh(&ah->data_lock);
+	ml_peer = ath12k_ml_peer_find(ah, sta->addr);
+	if (!ml_peer) {
+		spin_unlock_bh(&ah->data_lock);
+		ath12k_err(NULL, "ML peer for %pM not found", sta->addr);
+		return -EINVAL;
+	}
+
+	list_del(&ml_peer->list);
+	kfree(ml_peer);
+	spin_unlock_bh(&ah->data_lock);
+
+	ath12k_dbg(NULL, ATH12K_DBG_MAC, "ML peer deleted for %pM\n",
+		   sta->addr);
 	return 0;
 }
