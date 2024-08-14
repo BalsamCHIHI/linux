@@ -1221,6 +1221,8 @@ enum htt_t2h_msg_type {
 	HTT_T2H_MSG_TYPE_EXT_STATS_CONF = 0x1c,
 	HTT_T2H_MSG_TYPE_BKPRESSURE_EVENT_IND = 0x24,
 	HTT_T2H_MSG_TYPE_MLO_TIMESTAMP_OFFSET_IND = 0x28,
+	HTT_T2H_MSG_TYPE_MLO_RX_PEER_MAP = 0x29,
+	HTT_T2H_MSG_TYPE_MLO_RX_PEER_UNMAP = 0x2a,
 	HTT_T2H_MSG_TYPE_PEER_MAP3	= 0x2b,
 	HTT_T2H_MSG_TYPE_VDEV_TXRX_STATS_PERIODIC_IND = 0x2c,
 };
@@ -1804,6 +1806,41 @@ enum vdev_stats_offload_timer_duration {
 
 #define ATH12K_ML_PEER_ID               GENMASK(13, 0)
 #define ATH12K_ML_PEER_ID_VALID         BIT(13)
+
+struct htt_mac_addr {
+	u32 mac_addr_l32;
+	u32 mac_addr_h16;
+};
+
+#define ATH12K_HTT_MLO_PEER_MAP_TLV_LINK_INFO_TAG	0
+#define ATH12K_HTT_MAX_MLO_LINKS			3
+#define ATH12K_HTT_MLO_DEVICE_ID			GENMASK(2, 0)
+
+struct ath12k_htt_mlo_link_peer_info {
+	struct htt_tlv tlv_hdr;
+	u16 sw_peer_id;
+	u8 vdev_id;
+	u8 device_id;
+} __packed;
+
+#define ATH12K_HTT_MLO_PEER_MAP_INFO0_PEER_ID		GENMASK(23, 8)
+#define ATH12K_HTT_MLO_PEER_MAP_MAC_ADDR_H16		GENMASK(15, 0)
+
+struct ath12k_htt_mlo_peer_map_msg {
+	u32 info0;
+	struct htt_mac_addr mac_addr;
+	u32 info1;
+	u32 info2;
+	u32 info3;
+	u32 rsvd0;
+	u32 rsvd1;
+	struct ath12k_htt_mlo_link_peer_info link_peer[ATH12K_HTT_MAX_MLO_LINKS];
+} __packed;
+
+#define ATH12K_HTT_MLO_PEER_UNMAP_PEER_ID		GENMASK(23, 8)
+struct ath12k_htt_mlo_peer_unmap_msg {
+	u32 info0;
+} __packed;
 
 static inline void ath12k_dp_get_mac_addr(u32 addr_l32, u16 addr_h16, u8 *addr)
 {
