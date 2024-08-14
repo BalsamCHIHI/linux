@@ -564,3 +564,60 @@ int ath12k_peer_delete_send(struct ath12k *ar, u32 vdev_id, const u8 *addr)
 
 	return 0;
 }
+
+void ath12k_peer_mlo_map_event(struct ath12k_base *ab, struct sk_buff *skb)
+{
+	struct ath12k_htt_mlo_peer_map_msg *msg;
+	u16 ml_peer_id;
+	struct ath12k_peer *peer;
+	u16 mld_mac_h16;
+	u8 mld_addr[ETH_ALEN];
+
+	msg = (struct ath12k_htt_mlo_peer_map_msg *)skb->data;
+
+	ml_peer_id = u32_get_bits(msg->info0,
+				  ATH12K_HTT_MLO_PEER_MAP_INFO0_PEER_ID);
+
+	ml_peer_id |= ATH12K_ML_PEER_ID_VALID;
+
+	spin_lock_bh(&ab->base_lock);
+	peer = ath12k_peer_find_by_id(ab, ml_peer_id);
+
+	/* TODO a sync wait to check ml peer map success or delete
+	 * ml peer info in all link peers and make peer assoc failure
+	 * TBA after testing basic changes
+	 */
+	if (!peer) {
+		ath12k_warn(ab, "ml peer %d not found", ml_peer_id);
+		spin_unlock_bh(&ab->base_lock);
+		return;
+	}
+
+	mld_mac_h16 = u32_get_bits(msg->mac_addr.mac_addr_h16,
+				   ATH12K_HTT_MLO_PEER_MAP_MAC_ADDR_H16);
+	ath12k_dp_get_mac_addr(msg->mac_addr.mac_addr_l32, mld_mac_h16, mld_addr);
+
+	WARN_ON(memcmp(mld_addr, peer->ml_addr, ETH_ALEN));
+
+	spin_unlock_bh(&ab->base_lock);
+
+	ath12k_dbg(ab, ATH12K_DBG_DP_HTT, "htt MLO peer map peer %pM id %d\n",
+		   mld_addr, ml_peer_id);
+
+	/* TODO rx queue setup for the ML peer */
+}
+
+void ath12k_peer_mlo_unmap_event(struct ath12k_base *ab, struct sk_buff *skb)
+{
+	struct ath12k_htt_mlo_peer_unmap_msg *msg;
+	u16 ml_peer_id;
+
+	msg = (struct ath12k_htt_mlo_peer_unmap_msg *)skb->data;
+
+	ml_peer_id = u32_get_bits(msg->info0, ATH12K_HTT_MLO_PEER_UNMAP_PEER_ID);
+
+	ml_peer_id |= ATH12K_ML_PEER_ID_VALID;
+
+	ath12k_dbg(ab, ATH12K_DBG_DP_HTT, "htt MLO peer unmap peer ml id %d\n",
+		   ml_peer_id);
+}
