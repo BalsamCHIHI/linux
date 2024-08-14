@@ -4951,8 +4951,8 @@ static int ath12k_mac_station_remove(struct ath12k *ar,
 				     struct ath12k_link_sta *arsta)
 {
 	struct ath12k_vif *ahvif = arvif->ahvif;
-	int ret;
 	struct ieee80211_sta *sta = ath12k_ahsta_to_sta(arsta->ahsta);
+	int ret;
 
 	/* cancel must be done outside the ar mutex to avoid deadlock */
 	cancel_work_sync(&arsta->update_wk);
@@ -10496,6 +10496,8 @@ static struct ath12k_hw *ath12k_mac_hw_allocate(struct ath12k_hw_group *ag,
 
 	mutex_init(&ah->hw_mutex);
 	mutex_init(&ah->conf_mutex);
+	INIT_LIST_HEAD(&ah->ml_peers);
+	spin_lock_init(&ah->data_lock);
 
 	for (i = 0; i < num_pdev_map; i++) {
 		ab = pdev_map[i].ab;

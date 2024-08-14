@@ -67,6 +67,9 @@
 #define ATH12K_INVALID_GROUP_ID  0xFF
 #define ATH12K_INVALID_DEVICE_ID 0xFF
 
+#define ATH12K_MAX_MLO_PEERS            256
+#define ATH12K_MLO_PEER_ID_INVALID      0xFFFF
+
 enum ath12k_bdf_search {
 	ATH12K_BDF_SEARCH_DEFAULT,
 	ATH12K_BDF_SEARCH_BUS_AND_BOARD,
@@ -496,6 +499,7 @@ struct ath12k_sta {
 	struct ath12k_link_sta __rcu *link[IEEE80211_MLD_MAX_NUM_LINKS];
 	/* indicates bitmap of link sta created in FW */
 	u16 links_map;
+	u16 ml_peer_id;
 };
 
 #define ATH12K_MIN_5G_FREQ 4150
@@ -711,6 +715,13 @@ struct ath12k_hw {
 	struct mutex conf_mutex;
 	u8 num_radio;
 
+	DECLARE_BITMAP(free_ml_peer_id_map, ATH12K_MAX_MLO_PEERS);
+
+	/* Used for protecting objects used at ah level, ex. ath12k_ml_peer */
+	spinlock_t data_lock;
+
+	/* protected by ah->data_lock */
+	struct list_head ml_peers;
 	/* Keep last */
 	struct ath12k radio[] __aligned(sizeof(void *));
 };
