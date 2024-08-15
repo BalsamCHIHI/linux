@@ -2096,6 +2096,8 @@ int ath12k_wmi_send_peer_assoc_cmd(struct ath12k *ar,
 	struct ath12k_wmi_vht_rate_set_params *mcs;
 	struct ath12k_wmi_he_rate_set_params *he_mcs;
 	struct ath12k_wmi_eht_rate_set_params *eht_mcs;
+	struct wmi_peer_assoc_mlo_params *ml_params;
+	struct wmi_peer_assoc_mlo_partner_info *partner_info;
 	struct sk_buff *skb;
 	struct wmi_tlv *tlv;
 	void *ptr;
@@ -2113,8 +2115,13 @@ int ath12k_wmi_send_peer_assoc_cmd(struct ath12k *ar,
 	      TLV_HDR_SIZE + (peer_ht_rates_align * sizeof(u8)) +
 	      sizeof(*mcs) + TLV_HDR_SIZE +
 	      (sizeof(*he_mcs) * arg->peer_he_mcs_count) +
-	      TLV_HDR_SIZE + (sizeof(*eht_mcs) * arg->peer_eht_mcs_count) +
-	      TLV_HDR_SIZE + TLV_HDR_SIZE;
+	      TLV_HDR_SIZE + (sizeof(*eht_mcs) * arg->peer_eht_mcs_count);
+
+	if (arg->ml.enabled)
+		len += TLV_HDR_SIZE + sizeof(*ml_params) +
+		       TLV_HDR_SIZE + (arg->ml.num_partner_links * sizeof(*partner_info));
+	else
+		len += (2 * TLV_HDR_SIZE);
 
 	skb = ath12k_wmi_alloc_skb(wmi->wmi_ab, len);
 	if (!skb)
@@ -2238,12 +2245,34 @@ int ath12k_wmi_send_peer_assoc_cmd(struct ath12k *ar,
 		ptr += sizeof(*he_mcs);
 	}
 
-	/* MLO header tag with 0 length */
-	len = 0;
 	tlv = ptr;
+	len = arg->ml.enabled ? sizeof(*ml_params) : 0;
 	tlv->header = ath12k_wmi_tlv_hdr(WMI_TAG_ARRAY_STRUCT, len);
 	ptr += TLV_HDR_SIZE;
+	if (!len)
+		goto skip_ml_params;
 
+	ml_params = ptr;
+	ml_params->tlv_header = ath12k_wmi_tlv_cmd_hdr(WMI_TAG_MLO_PEER_ASSOC_PARAMS,
+						       (len - TLV_HDR_SIZE));
+	ml_params->flags = cpu_to_le32(ATH12K_WMI_FLAG_MLO_ENABLED);
+	if (arg->ml.assoc_link)
+		ml_params->flags |= cpu_to_le32(ATH12K_WMI_FLAG_MLO_ASSOC_LINK);
+	if (arg->ml.primary_umac)
+		ml_params->flags |= cpu_to_le32(ATH12K_WMI_FLAG_MLO_PRIMARY_UMAC);
+	if (arg->ml.logical_link_idx_valid)
+		ml_params->flags |=
+			cpu_to_le32(ATH12K_WMI_FLAG_MLO_LOGICAL_LINK_IDX_VALID);
+	if (arg->ml.peer_id_valid)
+		ml_params->flags |= cpu_to_le32(ATH12K_WMI_FLAG_MLO_PEER_ID_VALID);
+
+	ether_addr_copy(ml_params->mld_addr.addr, arg->ml.mld_addr);
+	ml_params->logical_link_idx = cpu_to_le32(arg->ml.logical_link_idx);
+	ml_params->ml_peer_id = cpu_to_le32(arg->ml.ml_peer_id);
+	ml_params->ieee_link_id = cpu_to_le32(arg->ml.ieee_link_id);
+	ptr += sizeof(*ml_params);
+
+skip_ml_params:
 	/* Loop through the EHT rate set */
 	len = arg->peer_eht_mcs_count * sizeof(*eht_mcs);
 	tlv = ptr;
@@ -2259,13 +2288,39 @@ int ath12k_wmi_send_peer_assoc_cmd(struct ath12k *ar,
 		eht_mcs->tx_mcs_set = cpu_to_le32(arg->peer_eht_tx_mcs_set[i]);
 		ptr += sizeof(*eht_mcs);
 	}
-
-	/* ML partner links tag with 0 length */
-	len = 0;
 	tlv = ptr;
+	len = arg->ml.enabled ? arg->ml.num_partner_links * sizeof(*partner_info) : 0;
+	/* fill ML Partner links */
 	tlv->header = ath12k_wmi_tlv_hdr(WMI_TAG_ARRAY_STRUCT, len);
 	ptr += TLV_HDR_SIZE;
+	if (len) {
+		for (i = 0; i < arg->ml.num_partner_links; i++) {
+			u32 cmd = WMI_TAG_MLO_PARTNER_LINK_PARAMS_PEER_ASSOC;
 
+			partner_info = ptr;
+			partner_info->tlv_header = ath12k_wmi_tlv_cmd_hdr(cmd,
+									  (sizeof(*partner_info) -
+									   TLV_HDR_SIZE));
+			partner_info->vdev_id =
+				cpu_to_le32(arg->ml.partner_info[i].vdev_id);
+			partner_info->hw_link_id =
+				cpu_to_le32(arg->ml.partner_info[i].hw_link_id);
+			partner_info->flags = cpu_to_le32(ATH12K_WMI_FLAG_MLO_ENABLED);
+			if (arg->ml.partner_info[i].assoc_link)
+				partner_info->flags |=
+					cpu_to_le32(ATH12K_WMI_FLAG_MLO_ASSOC_LINK);
+			if (arg->ml.partner_info[i].primary_umac)
+				partner_info->flags |=
+					cpu_to_le32(ATH12K_WMI_FLAG_MLO_PRIMARY_UMAC);
+			if (arg->ml.partner_info[i].logical_link_idx_valid)
+				partner_info->flags |=
+					cpu_to_le32(ATH12K_WMI_FLAG_MLO_LOGICAL_LINK_IDX_VALID);
+
+			partner_info->logical_link_idx =
+				cpu_to_le32(arg->ml.partner_info[i].logical_link_idx);
+			ptr += sizeof(*partner_info);
+		}
+	}
 	ath12k_dbg(ar->ab, ATH12K_DBG_WMI,
 		   "wmi peer assoc vdev id %d assoc id %d peer mac %pM peer_flags %x rate_caps %x peer_caps %x listen_intval %d ht_caps %x max_mpdu %d nss %d phymode %d peer_mpdu_density %d vht_caps %x he cap_info %x he ops %x he cap_info_ext %x he phy %x %x %x peer_bw_rxnss_override %x peer_flags_ext %x eht mac_cap %x %x eht phy_cap %x %x %x\n",
 		   cmd->vdev_id, cmd->peer_associd, arg->peer_mac,
