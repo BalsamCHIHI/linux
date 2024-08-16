@@ -271,15 +271,9 @@ int ath12k_peer_delete(struct ath12k *ar, u32 vdev_id, u8 *addr)
 
 	lockdep_assert_held(&ar->conf_mutex);
 
-	reinit_completion(&ar->peer_delete_done);
-
-	ret = ath12k_wmi_send_peer_delete_cmd(ar, addr, vdev_id);
-	if (ret) {
-		ath12k_warn(ar->ab,
-			    "failed to delete peer vdev_id %d addr %pM ret %d\n",
-			    vdev_id, addr, ret);
+	ret = ath12k_peer_delete_send(ar, vdev_id, addr);
+	if (ret)
 		return ret;
-	}
 
 	ret = ath12k_wait_for_peer_delete_done(ar, vdev_id, addr);
 	if (ret)
@@ -468,5 +462,105 @@ int ath12k_ml_peer_delete(struct ath12k_hw *ah, struct ieee80211_sta *sta)
 
 	ath12k_dbg(NULL, ATH12K_DBG_MAC, "ML peer deleted for %pM\n",
 		   sta->addr);
+	return 0;
+}
+
+int ath12k_ml_link_peers_delete(struct ath12k_vif *ahvif, struct ath12k_sta *ahsta)
+{
+	struct ath12k_link_vif *arvif;
+	struct ath12k_link_sta *arsta;
+	struct ieee80211_sta *sta = ath12k_ahsta_to_sta(ahsta);
+	struct ath12k *ar;
+	int ret, err_ret = 0;
+	u8 link_id = 0;
+	struct ath12k_hw *ah = ahvif->ah;
+	unsigned long links;
+
+	lockdep_assert_held(&ah->conf_mutex);
+
+	if (!sta->mlo)
+		return -EINVAL;
+
+	/* FW expects delete of all link peers at once before waiting for reception
+	 * of peer unmap or delete responses
+	 */
+	links = ahsta->links_map;
+	for_each_set_bit(link_id, &links, IEEE80211_MLD_MAX_NUM_LINKS) {
+		arvif = rcu_dereference_protected(ahvif->link[link_id],
+						  lockdep_is_held(&ah->conf_mutex));
+		arsta = rcu_dereference_protected(ahsta->link[link_id],
+						  lockdep_is_held(&ah->conf_mutex));
+		if (!arvif || !arsta)
+			continue;
+
+		ar = arvif->ar;
+		if (!ar)
+			continue;
+
+		if (ahvif->vdev_type == WMI_VDEV_TYPE_STA) {
+			ret = ath12k_mac_vdev_stop(arvif);
+			if (ret)
+				ath12k_warn(ar->ab, "failed to stop vdev %i: %d\n",
+					    arvif->vdev_id, ret);
+		}
+
+		cancel_work_sync(&arsta->update_wk);
+
+		mutex_lock(&ar->conf_mutex);
+		ath12k_dp_peer_cleanup(ar, arvif->vdev_id, arsta->addr);
+
+		ret = ath12k_peer_delete_send(ar, arvif->vdev_id, arsta->addr);
+		if (ret) {
+			mutex_unlock(&ar->conf_mutex);
+			ath12k_warn(ar->ab,
+				    "failed to delete peer vdev_id %d addr %pM ret %d\n",
+				    arvif->vdev_id, arsta->addr, ret);
+			err_ret = ret;
+			continue;
+		}
+		mutex_unlock(&ar->conf_mutex);
+	}
+
+	/* Ensure all link peers are deleted and unmapped */
+	links = ahsta->links_map;
+	for_each_set_bit(link_id, &links, IEEE80211_MLD_MAX_NUM_LINKS) {
+		arvif = rcu_dereference_protected(ahvif->link[link_id],
+						  lockdep_is_held(&ah->conf_mutex));
+		arsta = rcu_dereference_protected(ahsta->link[link_id],
+						  lockdep_is_held(&ah->conf_mutex));
+		if (!arvif || !arsta)
+			continue;
+
+		mutex_lock(&ar->conf_mutex);
+		ret = ath12k_wait_for_peer_delete_done(ar, arvif->vdev_id, arsta->addr);
+		if (ret) {
+			err_ret = ret;
+			mutex_unlock(&ar->conf_mutex);
+			continue;
+		}
+		ar->num_peers--;
+		mutex_unlock(&ar->conf_mutex);
+	}
+
+	return err_ret;
+}
+
+int ath12k_peer_delete_send(struct ath12k *ar, u32 vdev_id, const u8 *addr)
+{
+	struct ath12k_base *ab = ar->ab;
+	int ret;
+
+	lockdep_assert_held(&ar->conf_mutex);
+
+	reinit_completion(&ar->peer_delete_done);
+
+	ret = ath12k_wmi_send_peer_delete_cmd(ar, addr, vdev_id);
+	if (ret) {
+		ath12k_warn(ab,
+			    "failed to delete peer vdev_id %d addr %pM ret %d\n",
+			    vdev_id, addr, ret);
+		return ret;
+	}
+
 	return 0;
 }
