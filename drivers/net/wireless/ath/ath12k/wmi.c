@@ -6843,6 +6843,7 @@ ath12k_wmi_process_csa_switch_count_event(struct ath12k_base *ab,
 	int i;
 	struct ath12k_link_vif *arvif;
 	struct ath12k_vif *ahvif;
+	struct ieee80211_bss_conf *conf;
 
 	/* Finish CSA once the switch count becomes NULL */
 	if (ev->current_switch_count)
@@ -6858,8 +6859,13 @@ ath12k_wmi_process_csa_switch_count_event(struct ath12k_base *ab,
 			continue;
 		}
 		ahvif = arvif->ahvif;
-
-		if (arvif->is_up && ahvif->vif->bss_conf.csa_active)
+		conf = ath12k_get_link_bss_conf(arvif);
+		if (!conf) {
+			ath12k_warn(ab, "unable to access bss link conf in process csa for vif %pM link %u\n",
+				    ahvif->vif->addr, arvif->link_id);
+			continue;
+		}
+		if (arvif->is_up && conf->csa_active)
 			ieee80211_csa_finish(ahvif->vif, 0);
 	}
 	rcu_read_unlock();
