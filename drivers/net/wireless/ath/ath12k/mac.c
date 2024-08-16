@@ -5020,8 +5020,9 @@ static int ath12k_mac_station_add(struct ath12k *ar,
 	}
 
 	peer_param.vdev_id = arvif->vdev_id;
-	peer_param.peer_addr = sta->addr;
+	peer_param.peer_addr = arsta->addr;
 	peer_param.peer_type = WMI_PEER_TYPE_DEFAULT;
+	peer_param.ml_enabled = sta->mlo;
 
 	ret = ath12k_peer_create(ar, arvif, sta, &peer_param);
 	if (ret) {
