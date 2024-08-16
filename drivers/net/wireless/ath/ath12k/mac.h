@@ -90,5 +90,6 @@ int ath12k_mac_vif_set_keepalive(struct ath12k_link_vif *arvif,
 				 u32 interval);
 u8 ath12k_mac_get_target_pdev_id(struct ath12k *ar);
 int ath12k_mac_vdev_stop(struct ath12k_link_vif *arvif);
+struct ieee80211_bss_conf *ath12k_get_link_bss_conf(struct ath12k_link_vif *arvif);
 
 #endif
