@@ -5609,6 +5609,109 @@ static void ath12k_mac_op_sta_rc_update(struct ieee80211_hw *hw,
 	rcu_read_unlock();
 }
 
+static struct ath12k_link_sta *
+ath12k_mac_alloc_assign_link_sta(struct ath12k_hw *ah,
+				 struct ath12k_sta *ahsta,
+				 struct ath12k_vif *ahvif, u8 link_id)
+{
+	struct ath12k_link_sta *arsta;
+
+	lockdep_assert_held(&ah->conf_mutex);
+
+	if (link_id >= IEEE80211_MLD_MAX_NUM_LINKS)
+		return NULL;
+
+	rcu_read_lock();
+	if (WARN_ON(rcu_dereference(ahsta->link[link_id]))) {
+		rcu_read_unlock();
+		return NULL;
+	}
+	rcu_read_unlock();
+
+	arsta = kzalloc(sizeof(*arsta), GFP_KERNEL);
+	if (!arsta)
+		return NULL;
+
+	if (ath12k_mac_assign_link_sta(ah, ahsta, arsta, ahvif, link_id)) {
+		kfree(arsta);
+		return NULL;
+	}
+
+	return arsta;
+}
+
+static int ath12k_mac_op_change_sta_links(struct ieee80211_hw *hw,
+					  struct ieee80211_vif *vif,
+					  struct ieee80211_sta *sta,
+					  u16 old_links, u16 new_links)
+{
+	struct ath12k_hw *ah = hw->priv;
+	struct ath12k *ar;
+	struct ath12k_link_vif *arvif;
+	struct ath12k_link_sta *arsta;
+	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
+	struct ath12k_sta *ahsta = ath12k_sta_to_ahsta(sta);
+	unsigned long valid_links;
+	u8 link_id;
+	int ret = 0;
+
+	if (!sta->valid_links)
+		return -EINVAL;
+
+	/* Firmware does not support removal of one of link stas.
+	 * All sta would be removed during ML STA
+	 * delete in sta_state(), hence link sta removal is not handled here.
+	 */
+	if (new_links < old_links)
+		return 0;
+
+	mutex_lock(&ah->conf_mutex);
+
+	if (ahsta->ml_peer_id == ATH12K_MLO_PEER_ID_INVALID) {
+		ath12k_err(NULL, "unable to add link for ml sta %pM", sta->addr);
+		mutex_unlock(&ah->conf_mutex);
+		return -EINVAL;
+	}
+
+	/* this op is expected only after initial sta insertion with default link */
+	if (WARN_ON(ahsta->links_map == 0))
+		return -EINVAL;
+
+	valid_links = new_links;
+	for_each_set_bit(link_id, &valid_links, IEEE80211_MLD_MAX_NUM_LINKS) {
+		if (ahsta->links_map & BIT(link_id))
+			continue;
+
+		arvif = rcu_dereference_protected(ahvif->link[link_id],
+						  lockdep_is_held(&ah->conf_mutex));
+		arsta = ath12k_mac_alloc_assign_link_sta(ah, ahsta, ahvif, link_id);
+
+		if (!arvif || !arsta) {
+			ath12k_err(NULL, "Failed to alloc/assign link sta");
+			continue;
+		}
+
+		ar = arvif->ar;
+		if (!ar)
+			continue;
+
+		mutex_lock(&ar->conf_mutex);
+		ret = ath12k_mac_station_add(ar, arvif, arsta);
+		if (ret) {
+			mutex_unlock(&ar->conf_mutex);
+			ath12k_warn(ar->ab, "Failed to add station: %pM for VDEV: %d\n",
+				    arsta->addr, arvif->vdev_id);
+			ath12k_mac_free_unassign_link_sta(ah, ahsta, link_id);
+			break;
+		}
+		mutex_unlock(&ar->conf_mutex);
+	}
+
+	mutex_unlock(&ah->conf_mutex);
+
+	return ret;
+}
+
 static int ath12k_conf_tx_uapsd(struct ath12k_link_vif *arvif,
 				u16 ac, bool enable)
 {
@@ -9719,7 +9822,7 @@ static const struct ieee80211_ops ath12k_ops = {
 	.sta_statistics			= ath12k_mac_op_sta_statistics,
 	.remain_on_channel              = ath12k_mac_op_remain_on_channel,
 	.cancel_remain_on_channel       = ath12k_mac_op_cancel_remain_on_channel,
-
+	.change_sta_links               = ath12k_mac_op_change_sta_links,
 #ifdef CONFIG_PM
 	.suspend			= ath12k_wow_op_suspend,
 	.resume				= ath12k_wow_op_resume,
