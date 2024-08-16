@@ -294,6 +294,7 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 		       struct ath12k_wmi_peer_create_arg *arg)
 {
 	struct ieee80211_vif *vif = ath12k_ahvif_to_vif(arvif->ahvif);
+	struct ath12k_hw *ah = arvif->ahvif->ah;
 	struct ath12k_peer *peer;
 	int ret;
 	struct ath12k_sta *ahsta;
@@ -367,7 +368,8 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 	if (sta) {
 		ahsta = ath12k_sta_to_ahsta(sta);
 		/* KVALO: check locking */
-		arsta = rcu_dereference(ahsta->link[link_id]);
+		arsta = rcu_dereference_protected(ahsta->link[link_id],
+						  lockdep_is_held(&ah->conf_mutex));
 
 		/* Fill ML info into created peer */
 		if (sta->mlo) {
