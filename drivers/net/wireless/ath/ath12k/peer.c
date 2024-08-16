@@ -367,7 +367,8 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 	if (sta) {
 		ahsta = ath12k_sta_to_ahsta(sta);
 		/* KVALO: check locking */
-		arsta = rcu_dereference(ahsta->link[link_id]);
+		arsta = wiphy_dereference(ath12k_ar_to_hw(ar)->wiphy,
+					  ahsta->link[link_id]);
 
 		/* Fill ML info into created peer */
 		if (sta->mlo) {
