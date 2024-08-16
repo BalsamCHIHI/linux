@@ -296,6 +296,10 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 	struct ieee80211_vif *vif = ath12k_ahvif_to_vif(arvif->ahvif);
 	struct ath12k_peer *peer;
 	int ret;
+	struct ath12k_sta *ahsta;
+	struct ath12k_link_sta *arsta;
+	u8 link_id = arvif->link_id;
+	u16 ml_peer_id;
 
 	lockdep_assert_held(&ar->conf_mutex);
 
@@ -358,6 +362,23 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 	if (vif->type == NL80211_IFTYPE_STATION) {
 		arvif->ast_hash = peer->ast_hash;
 		arvif->ast_idx = peer->hw_peer_id;
+	}
+
+	if (sta) {
+		ahsta = ath12k_sta_to_ahsta(sta);
+		arsta = ahsta->link[link_id];
+
+		/* Fill ML info into created peer */
+		if (sta->mlo) {
+			ml_peer_id = ahsta->ml_peer_id;
+			peer->ml_peer_id = ml_peer_id | ATH12K_ML_PEER_ID_VALID;
+			ether_addr_copy(peer->ml_addr, sta->addr);
+			/* the assoc link is considered primary for now */
+			peer->primary_link = arsta->is_assoc_link;
+		} else {
+			peer->ml_peer_id = ATH12K_MLO_PEER_ID_INVALID;
+			peer->primary_link = true;
+		}
 	}
 
 	peer->sec_type = HAL_ENCRYPT_TYPE_OPEN;
