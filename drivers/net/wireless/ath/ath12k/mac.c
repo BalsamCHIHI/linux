@@ -6923,6 +6923,7 @@ static void ath12k_mgmt_over_wmi_tx_work(struct work_struct *work)
 	struct sk_buff *skb;
 	int ret;
 
+	mutex_lock(&ah->conf_mutex);
 	while ((skb = skb_dequeue(&ar->wmi_mgmt_tx_queue)) != NULL) {
 		skb_cb = ATH12K_SKB_CB(skb);
 		if (!skb_cb->vif) {
@@ -6939,7 +6940,6 @@ static void ath12k_mgmt_over_wmi_tx_work(struct work_struct *work)
 			ath12k_mgmt_over_wmi_tx_drop(ar, skb);
 			continue;
 		}
-		mutex_lock(&ah->conf_mutex);
 		arvif = rcu_dereference_protected(ahvif->link[skb_cb->link_id],
 						  lockdep_is_held(&ah->conf_mutex));
 		if (ar->allocated_vdev_map & (1LL << arvif->vdev_id)) {
@@ -6957,8 +6957,8 @@ static void ath12k_mgmt_over_wmi_tx_work(struct work_struct *work)
 				    skb_cb->link_id);
 			ath12k_mgmt_over_wmi_tx_drop(ar, skb);
 		}
-		mutex_unlock(&ah->conf_mutex);
 	}
+	mutex_unlock(&ah->conf_mutex);
 }
 
 static int ath12k_mac_mgmt_tx(struct ath12k *ar, struct sk_buff *skb,
@@ -9358,7 +9358,11 @@ static void ath12k_mac_op_flush(struct ieee80211_hw *hw, struct ieee80211_vif *v
 				u32 queues, bool drop)
 {
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
+	struct ath12k_link_vif *arvif;
+	struct ath12k_vif *ahvif;
+	unsigned long links;
 	struct ath12k *ar;
+	u8 link_id;
 	int i;
 
 	if (drop)
@@ -9371,12 +9375,24 @@ static void ath12k_mac_op_flush(struct ieee80211_hw *hw, struct ieee80211_vif *v
 		return;
 	}
 
-	ar = ath12k_get_ar_by_vif(hw, vif);
-
-	if (!ar)
-		return;
-
-	ath12k_mac_flush(ar);
+	/* There is a chance of mgmt tx workqueue and op_flush to go
+	 * mutually exclusive as both are acquiring the ah->mutex_lock.
+	 * During that time, if op_flush acquired the mutex_lock first
+	 * then the wait for event timeout will expire as wmi mgmt tx
+	 * is waiting for the mutex_lock to be release by op_flush.
+	 * Hence, flush the tx work before acquiring mutex here.
+	 */
+	mutex_lock(&ah->conf_mutex);
+	ahvif = ath12k_vif_to_ahvif(vif);
+	links = ahvif->links_map;
+	for_each_set_bit(link_id, &links, IEEE80211_MLD_MAX_NUM_LINKS) {
+		arvif = rcu_dereference_protected(ahvif->link[link_id],
+						  lockdep_is_held(&ah->conf_mutex));
+		if (!(arvif && arvif->ar))
+			continue;
+		ath12k_mac_flush(arvif->ar);
+	}
+	mutex_unlock(&ah->conf_mutex);
 }
 
 static int
