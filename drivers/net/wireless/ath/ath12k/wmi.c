@@ -4644,6 +4644,8 @@ ath12k_wmi_tlv_mac_phy_caps_ext_parse(struct ath12k_base *ab,
 					  caps->eht_cap_info_internal);
 	}
 
+	pdev->cap.eml_cap = caps->eml_cap_u.eml_capability;
+	pdev->cap.mld_cap = caps->mld_cap_u.mld_capability;
 	return 0;
 }
 

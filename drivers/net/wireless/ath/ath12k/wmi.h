@@ -2722,6 +2722,29 @@ struct ath12k_wmi_caps_ext_params {
 	__le32 eht_cap_info_internal;
 	__le32 eht_supp_mcs_ext_2ghz[WMI_MAX_EHT_SUPP_MCS_2G_SIZE];
 	__le32 eht_supp_mcs_ext_5ghz[WMI_MAX_EHT_SUPP_MCS_5G_SIZE];
+	union {
+		struct {
+			u32 emlsr_support:1,
+			    emlsr_padding_delay:3,
+			    emlsr_transition_delay:3,
+			    emlmr_support:1,
+			    emlmr_delay:3,
+			    transition_timeout:4,
+			    reserved: 17;
+		};
+		u32 eml_capability;
+	} eml_cap_u;
+	union {
+		struct {
+			u32 max_num_simultaneous_links:4,
+			    srs_support:1,
+			    tid_to_link_negotiation_support:2,
+			    freq_separation_str:5,
+			    aar_support:1,
+			    reserved2: 19;
+		};
+		u32 mld_capability;
+	} mld_cap_u;
 } __packed;
 
 /* 2 word representation of MAC addr */
