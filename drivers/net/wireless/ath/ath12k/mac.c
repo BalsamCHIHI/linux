@@ -3779,9 +3779,11 @@ static void ath12k_ahvif_put_link_key_cache(struct ath12k_vif_cache *cache)
 
 static void ath12k_ahvif_put_link_cache(struct ath12k_vif *ahvif, u8 link_id)
 {
-	ath12k_ahvif_put_link_key_cache(ahvif->cache[link_id]);
-	kfree(ahvif->cache[link_id]);
-	ahvif->cache[link_id] = NULL;
+	if (link_id < IEEE80211_MLD_MAX_NUM_LINKS) {
+		ath12k_ahvif_put_link_key_cache(ahvif->cache[link_id]);
+		kfree(ahvif->cache[link_id]);
+		ahvif->cache[link_id] = NULL;
+	}
 }
 
 static void ath12k_mac_op_link_info_changed(struct ieee80211_hw *hw,
@@ -3845,9 +3847,9 @@ static struct ath12k_link_vif *ath12k_mac_assign_link_vif(struct ath12k_hw *ah,
 		arvif = &ahvif->deflink;
 	} else {
 		/* If this is the first link arvif being created for an ML VIF
-		 * use the preallocated deflink memory
+		 * use the preallocated deflink memory except for scan arvifs
 		 */
-		if (!ahvif->links_map) {
+		if (!ahvif->links_map && link_id != ATH12K_DEFAULT_SCAN_LINK) {
 			arvif = &ahvif->deflink;
 		} else {
 			arvif = (struct ath12k_link_vif *)
@@ -4136,6 +4138,11 @@ ath12k_mac_find_link_id_by_ar(struct ath12k_vif *ahvif, struct ath12k *ar)
 
 	lockdep_assert_held(&ah->conf_mutex);
 
+	/* Non-ML VIfs should alwasys use deflink (link 0) for scan
+	 */
+	if (!ahvif->vif->valid_links)
+		return ATH12K_DEFAULT_LINK_ID;
+
 	for_each_set_bit(link_id, &links, IEEE80211_MLD_MAX_NUM_LINKS) {
 		arvif = rcu_dereference_protected(ahvif->link[link_id],
 						  lockdep_is_held(&ah->conf_mutex));
@@ -4147,10 +4154,10 @@ ath12k_mac_find_link_id_by_ar(struct ath12k_vif *ahvif, struct ath12k *ar)
 			return link_id;
 	}
 
-	/* input ar is not assigned to any of the links, use link id
-	 * 0 for scan vdev creation.
+	/* input ar is not assigned to any of the links of ML VIF, use scan
+	 * link (15) for scan vdev creation.
 	 */
-	return 0;
+	return ATH12K_DEFAULT_SCAN_LINK;
 }
 
 static int ath12k_mac_op_hw_scan(struct ieee80211_hw *hw,
@@ -4181,7 +4188,7 @@ static int ath12k_mac_op_hw_scan(struct ieee80211_hw *hw,
 	}
 	/* check if any of the links of ML VIF is already started on
 	 * radio(ar) correpsondig to given scan frequency and use it,
-	 * if not use deflink(link 0) for scan purpose.
+	 * if not use scan link (link 15) for scan purpose.
 	 */
 	link_id = ath12k_mac_find_link_id_by_ar(ahvif, ar);
 	arvif = ath12k_mac_assign_link_vif(ah, vif, link_id);
@@ -4307,6 +4314,12 @@ static int ath12k_mac_op_hw_scan(struct ieee80211_hw *hw,
 		spin_unlock_bh(&ar->data_lock);
 	}
 
+	/* As per cfg80211/mac80211 scan design, it allows only one
+	 * scan at a time. Hence last_scan link id is used for
+	 * tracking the link id on which the scan is been done on
+	 * this vif
+	 */
+	ahvif->last_scan_link = arvif->link_id;
 	/* Add a margin to account for event/command processing */
 	ieee80211_queue_delayed_work(ath12k_ar_to_hw(ar), &ar->scan.timeout,
 				     msecs_to_jiffies(arg.max_scan_time +
@@ -4328,13 +4341,15 @@ static void ath12k_mac_op_cancel_hw_scan(struct ieee80211_hw *hw,
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
+	u16 link_id = ahvif->last_scan_link;
 	struct ath12k_link_vif *arvif;
 	struct ath12k *ar;
 
 	mutex_lock(&ah->conf_mutex);
-	arvif = &ahvif->deflink;
+	arvif = rcu_dereference_protected(ahvif->link[link_id],
+					  lockdep_is_held(&ah->conf_mutex));
 
-	if (!arvif->is_created) {
+	if (!arvif || arvif->is_created) {
 		mutex_unlock(&ah->conf_mutex);
 		return;
 	}
@@ -7733,16 +7748,30 @@ int ath12k_mac_vdev_create(struct ath12k *ar, struct ath12k_link_vif *arvif)
 	u16 nss;
 	int i;
 	int ret, vdev_id;
+	u8 link_id;
 
-	link_conf = ath12k_get_link_bss_conf(arvif);
+	lockdep_assert_held(&ar->conf_mutex);
+	/* If no link is active and scan vdev is requested
+	 * use a default link conf for scan address purpose
+	 */
+	if (arvif->link_id == ATH12K_DEFAULT_SCAN_LINK && vif->valid_links)
+		link_id = ffs(vif->valid_links) - 1;
+	else
+		link_id = arvif->link_id;
+
+	rcu_read_lock();
+
+	link_conf = rcu_dereference(vif->link_conf[link_id]);
+
 	if (!link_conf) {
+		rcu_read_unlock();
 		ath12k_warn(ar->ab, "unable to access bss link conf in vdev create for vif %pM link %u\n",
 			    vif->addr, arvif->link_id);
 		return -ENOLINK;
 	}
 
 	memcpy(arvif->bssid, link_conf->addr, ETH_ALEN);
-	lockdep_assert_held(&ar->conf_mutex);
+	rcu_read_unlock();
 
 	arvif->ar = ar;
 	vdev_id = __ffs64(ab->free_vdev_map);
@@ -8013,7 +8042,9 @@ static struct ath12k *ath12k_mac_assign_vif_to_vdev(struct ieee80211_hw *hw,
 						    struct ath12k_link_vif *arvif,
 						    struct ieee80211_chanctx_conf *ctx)
 {
-	struct ieee80211_vif *vif = ath12k_ahvif_to_vif(arvif->ahvif);
+	struct ath12k_vif *ahvif = arvif->ahvif;
+	struct ieee80211_vif *vif = ath12k_ahvif_to_vif(ahvif);
+	struct ath12k_link_vif *scan_arvif;
 	struct ath12k_hw *ah = hw->priv;
 	struct ath12k *ar, *prev_ar;
 	struct ath12k_base *ab;
@@ -8030,6 +8061,21 @@ static struct ath12k *ath12k_mac_assign_vif_to_vdev(struct ieee80211_hw *hw,
 	if (!ar)
 		return NULL;
 
+	/* cleanup the scan vdev if we are done scan on that ar
+	 * and now we want to create for actual usage.
+	 */
+	if (vif->valid_links) {
+		scan_arvif =
+			rcu_dereference_protected(ahvif->link[ATH12K_DEFAULT_SCAN_LINK],
+						  lockdep_is_held(&ah->conf_mutex));
+		if (scan_arvif && scan_arvif->ar == ar) {
+			mutex_lock(&ar->conf_mutex);
+			ar->scan.vdev_id = -1;
+			ath12k_mac_remove_link_interface(hw, scan_arvif);
+			ath12k_mac_unassign_link_vif(scan_arvif);
+			mutex_unlock(&ar->conf_mutex);
+		}
+	}
 	if (arvif->ar) {
 		/* This is not expected really */
 		if (WARN_ON(!arvif->is_created)) {
@@ -8240,7 +8286,7 @@ static void ath12k_mac_op_remove_interface(struct ieee80211_hw *hw,
 	u8 link_id;
 
 	mutex_lock(&ah->conf_mutex);
-	for (link_id = 0; link_id < IEEE80211_MLD_MAX_NUM_LINKS; link_id++) {
+	for (link_id = 0; link_id < ATH12K_NUM_MAX_LINKS; link_id++) {
 		/* if we cached some config but never received assign chanctx,
 		 * free the allocated cache.
 		 */
@@ -9103,13 +9149,8 @@ ath12k_mac_op_assign_vif_chanctx(struct ieee80211_hw *hw,
 		return -ENOMEM;
 	}
 
-	if (!arvif->is_started) {
-		ar = ath12k_mac_assign_vif_to_vdev(hw, arvif, ctx);
-		if (!ar) {
-			mutex_unlock(&ah->conf_mutex);
-			return -EINVAL;
-		}
-	} else {
+	ar = ath12k_mac_assign_vif_to_vdev(hw, arvif, ctx);
+	if (!ar) {
 		mutex_unlock(&ah->conf_mutex);
 		ath12k_warn(arvif->ar->ab, "failed to assign chanctx for vif %pM link id %u link vif is already started",
 			    vif->addr, link_id);
