@@ -926,6 +926,7 @@ static const struct ath12k_hw_params ath12k_hw_params[] = {
 		.supports_dynamic_smps_6ghz = true,
 
 		.iova_mask = 0,
+
 		.supports_aspm = false,
 	},
 	{
@@ -1005,6 +1006,7 @@ static const struct ath12k_hw_params ath12k_hw_params[] = {
 		.supports_dynamic_smps_6ghz = false,
 
 		.iova_mask = ATH12K_PCIE_MAX_PAYLOAD_SIZE - 1,
+
 		.supports_aspm = true,
 	},
 	{
@@ -1080,6 +1082,7 @@ static const struct ath12k_hw_params ath12k_hw_params[] = {
 		.supports_dynamic_smps_6ghz = true,
 
 		.iova_mask = 0,
+
 		.supports_aspm = false,
 	},
 };

@@ -368,7 +368,7 @@ struct iwl_rx_handlers {
  */
 static const struct iwl_rx_handlers iwl_mvm_rx_handlers[] = {
 	RX_HANDLER(TX_CMD, iwl_mvm_rx_tx_cmd, RX_HANDLER_SYNC,
-		   struct iwl_mvm_tx_resp),
+		   struct iwl_tx_resp),
 	RX_HANDLER(BA_NOTIF, iwl_mvm_rx_ba_notif, RX_HANDLER_SYNC,
 		   struct iwl_mvm_ba_notif),
 
@@ -1287,12 +1287,12 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	struct iwl_mvm_csme_conn_info *csme_conn_info __maybe_unused;
 
 	/*
-	 * We use IWL_MVM_STATION_COUNT_MAX to check the validity of the station
+	 * We use IWL_STATION_COUNT_MAX to check the validity of the station
 	 * index all over the driver - check that its value corresponds to the
 	 * array size.
 	 */
 	BUILD_BUG_ON(ARRAY_SIZE(mvm->fw_id_to_mac_id) !=
-		     IWL_MVM_STATION_COUNT_MAX);
+		     IWL_STATION_COUNT_MAX);
 
 	/********************************
 	 * 1. Allocating and configuring HW data
@@ -2155,6 +2155,7 @@ static void iwl_op_mode_mvm_time_point(struct iwl_op_mode *op_mode,
 	iwl_dbg_tlv_time_point(&mvm->fwrt, tp_id, tp_data);
 }
 
+#ifdef CONFIG_PM_SLEEP
 static void iwl_op_mode_mvm_device_powered_off(struct iwl_op_mode *op_mode)
 {
 	struct iwl_mvm *mvm = IWL_OP_MODE_GET_MVM(op_mode);
@@ -2163,11 +2164,13 @@ static void iwl_op_mode_mvm_device_powered_off(struct iwl_op_mode *op_mode)
 	clear_bit(IWL_MVM_STATUS_IN_D3, &mvm->status);
 	mvm->trans->system_pm_mode = IWL_PLAT_PM_MODE_DISABLED;
 	iwl_mvm_stop_device(mvm);
-#ifdef CONFIG_PM
 	mvm->fast_resume = false;
-#endif
 	mutex_unlock(&mvm->mutex);
 }
+#else
+static void iwl_op_mode_mvm_device_powered_off(struct iwl_op_mode *op_mode)
+{}
+#endif
 
 #define IWL_MVM_COMMON_OPS					\
 	/* these could be differentiated */			\
