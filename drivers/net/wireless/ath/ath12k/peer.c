@@ -371,6 +371,8 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 		arsta = rcu_dereference_protected(ahsta->link[link_id],
 						  lockdep_is_held(&ah->conf_mutex));
 
+		peer->link_id = arsta->link_id;
+
 		/* Fill ML info into created peer */
 		if (sta->mlo) {
 			ml_peer_id = ahsta->ml_peer_id;
