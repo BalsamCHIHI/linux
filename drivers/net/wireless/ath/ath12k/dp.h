@@ -1364,7 +1364,6 @@ struct ath12k_htt_ppdu_stats_msg {
 
 struct htt_tlv {
 	__le32 header;
-	u8 value[];
 } __packed;
 
 #define HTT_TLV_TAG			GENMASK(11, 0)
