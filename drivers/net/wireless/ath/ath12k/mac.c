@@ -2598,7 +2598,7 @@ static void ath12k_peer_assoc_h_qos(struct ath12k *ar,
 	}
 
 	ath12k_dbg(ar->ab, ATH12K_DBG_MAC, "mac peer %pM qos %d\n",
-		   sta->addr, arg->qos_flag);
+		   arsta->addr, arg->qos_flag);
 }
 
 static int ath12k_peer_assoc_qos_ap(struct ath12k *ar,
@@ -2638,7 +2638,7 @@ static int ath12k_peer_assoc_qos_ap(struct ath12k *ar,
 
 	arg.param = WMI_AP_PS_PEER_PARAM_UAPSD;
 	arg.value = uapsd;
-	ret = ath12k_wmi_send_set_ap_ps_param_cmd(ar, sta->addr, &arg);
+	ret = ath12k_wmi_send_set_ap_ps_param_cmd(ar, arsta->addr, &arg);
 	if (ret)
 		goto err;
 
@@ -5131,7 +5131,7 @@ static void ath12k_mac_station_post_remove(struct ath12k *ar,
 	ath12k_mac_dec_num_stations(arvif, arsta);
 
 	spin_lock_bh(&ar->ab->base_lock);
-	peer = ath12k_peer_find(ar->ab, arvif->vdev_id, sta->addr);
+	peer = ath12k_peer_find(ar->ab, arvif->vdev_id, arsta->addr);
 	if (peer && peer->sta == sta) {
 		ath12k_warn(ar->ab, "Found peer entry %pM n vdev %i after it was supposedly removed\n",
 			    vif->addr, arvif->vdev_id);
@@ -5180,27 +5180,26 @@ static int ath12k_station_authorize(struct ath12k *ar,
 {
 	struct ath12k_peer *peer;
 	struct ieee80211_vif *vif = ath12k_ahvif_to_vif(arvif->ahvif);
-	struct ieee80211_sta *sta = ath12k_ahsta_to_sta(arsta->ahsta);
 	int ret = 0;
 
 	lockdep_assert_held(&ar->conf_mutex);
 
 	spin_lock_bh(&ar->ab->base_lock);
 
-	peer = ath12k_peer_find(ar->ab, arvif->vdev_id, sta->addr);
+	peer = ath12k_peer_find(ar->ab, arvif->vdev_id, arsta->addr);
 	if (peer)
 		peer->is_authorized = true;
 
 	spin_unlock_bh(&ar->ab->base_lock);
 
 	if (vif->type == NL80211_IFTYPE_STATION && arvif->is_up) {
-		ret = ath12k_wmi_set_peer_param(ar, sta->addr,
+		ret = ath12k_wmi_set_peer_param(ar, arsta->addr,
 						arvif->vdev_id,
 						WMI_PEER_AUTHORIZE,
 						1);
 		if (ret)
 			ath12k_warn(ar->ab, "Unable to authorize peer %pM vdev %d: %d\n",
-				    sta->addr, arvif->vdev_id, ret);
+				    arsta->addr, arvif->vdev_id, ret);
 	}
 
 	return ret;
@@ -5279,15 +5278,15 @@ static int ath12k_mac_station_add(struct ath12k *ar,
 	ret = ath12k_peer_create(ar, arvif, sta, &peer_param);
 	if (ret) {
 		ath12k_warn(ab, "Failed to add peer: %pM for VDEV: %d\n",
-			    sta->addr, arvif->vdev_id);
+			    arsta->addr, arvif->vdev_id);
 		goto free_peer;
 	}
 
 	ath12k_dbg(ab, ATH12K_DBG_MAC, "Added peer: %pM for VDEV: %d\n",
-		   sta->addr, arvif->vdev_id);
+		   arsta->addr, arvif->vdev_id);
 
 	if (ieee80211_vif_is_mesh(vif)) {
-		ret = ath12k_wmi_set_peer_param(ar, sta->addr,
+		ret = ath12k_wmi_set_peer_param(ar, arsta->addr,
 						arvif->vdev_id,
 						WMI_PEER_USE_4ADDR, 1);
 		if (ret) {
@@ -5524,7 +5523,7 @@ static int ath12k_mac_handle_link_sta_state(struct ieee80211_hw *hw,
 		ret = ath12k_mac_station_add(ar, arvif, arsta);
 		if (ret)
 			ath12k_warn(ar->ab, "Failed to add station: %pM for VDEV: %d\n",
-				    sta->addr, arvif->vdev_id);
+				    arsta->addr, arvif->vdev_id);
 
 	/* IEEE80211_STA_AUTH -> IEEE80211_STA_ASSOC: Send station assoc command for
 	 * peer associated to AP/Mesh/ADHOC vif type.
@@ -5537,7 +5536,7 @@ static int ath12k_mac_handle_link_sta_state(struct ieee80211_hw *hw,
 		ret = ath12k_station_assoc(ar, arvif, arsta, false);
 		if (ret)
 			ath12k_warn(ar->ab, "Failed to associate station: %pM\n",
-				    sta->addr);
+				    arsta->addr);
 
 		spin_lock_bh(&ar->data_lock);
 
@@ -5554,7 +5553,7 @@ static int ath12k_mac_handle_link_sta_state(struct ieee80211_hw *hw,
 		ret = ath12k_station_authorize(ar, arvif, arsta);
 		if (ret)
 			ath12k_warn(ar->ab, "Failed to authorize station: %pM\n",
-				    sta->addr);
+				    arsta->addr);
 
 	/* IEEE80211_STA_AUTHORIZED -> IEEE80211_STA_ASSOC: station may be in removal,
 	 * deauthorize it.
@@ -5573,7 +5572,7 @@ static int ath12k_mac_handle_link_sta_state(struct ieee80211_hw *hw,
 		ret = ath12k_station_disassoc(ar, arvif, arsta);
 		if (ret)
 			ath12k_warn(ar->ab, "Failed to disassociate station: %pM\n",
-				    sta->addr);
+				    arsta->addr);
 	}
 
 	arsta->state = new_state;
@@ -5790,12 +5789,12 @@ static void ath12k_mac_op_sta_rc_update(struct ieee80211_hw *hw,
 	}
 	spin_lock_bh(&ar->ab->base_lock);
 
-	peer = ath12k_peer_find(ar->ab, arvif->vdev_id, sta->addr);
+	peer = ath12k_peer_find(ar->ab, arvif->vdev_id, arsta->addr);
 	if (!peer) {
 		spin_unlock_bh(&ar->ab->base_lock);
 		rcu_read_unlock();
 		ath12k_warn(ar->ab, "mac sta rc update failed to find peer %pM on vdev %i\n",
-			    sta->addr, arvif->vdev_id);
+			    arsta->addr, arvif->vdev_id);
 		return;
 	}
 
@@ -5810,7 +5809,7 @@ static void ath12k_mac_op_sta_rc_update(struct ieee80211_hw *hw,
 
 	ath12k_dbg(ar->ab, ATH12K_DBG_MAC,
 		   "mac sta rc update for %pM changed %08x bw %d nss %d smps %d\n",
-		   sta->addr, changed, link_sta->bandwidth, link_sta->rx_nss,
+		   arsta->addr, changed, link_sta->bandwidth, link_sta->rx_nss,
 		   link_sta->smps_mode);
 
 	spin_lock_bh(&ar->data_lock);
@@ -5840,7 +5839,7 @@ static void ath12k_mac_op_sta_rc_update(struct ieee80211_hw *hw,
 			break;
 		default:
 			ath12k_warn(ar->ab, "Invalid smps %d in sta rc update for %pM link %u\n",
-				    link_sta->smps_mode, sta->addr, link_sta->link_id);
+				    link_sta->smps_mode, arsta->addr, link_sta->link_id);
 			smps = WMI_PEER_SMPS_PS_NONE;
 			break;
 		}
@@ -9676,14 +9675,14 @@ static void ath12k_mac_disable_peer_fixed_rate(void *data,
 	if (!arsta || arsta->arvif != arvif)
 		return;
 
-	ret = ath12k_wmi_set_peer_param(ar, sta->addr,
+	ret = ath12k_wmi_set_peer_param(ar, arsta->addr,
 					arvif->vdev_id,
 					WMI_PEER_PARAM_FIXED_RATE,
 					WMI_FIXED_RATE_NONE);
 	if (ret)
 		ath12k_warn(ar->ab,
 			    "failed to disable peer fixed rate for STA %pM ret %d\n",
-			    sta->addr, ret);
+			    arsta->addr, ret);
 }
 
 static int
