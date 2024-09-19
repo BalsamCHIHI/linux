@@ -917,7 +917,9 @@ void ath12k_mac_peer_cleanup_all(struct ath12k *ar)
 
 	spin_lock_bh(&ab->base_lock);
 	list_for_each_entry_safe(peer, tmp, &ab->peers, list) {
-		ath12k_dp_rx_peer_tid_cleanup(ar, peer);
+		/* Skip Rx TID cleanup for self peer */
+		if (peer->sta)
+			ath12k_dp_rx_peer_tid_cleanup(ar, peer);
 		list_del(&peer->list);
 		kfree(peer);
 	}
@@ -9346,6 +9348,8 @@ int ath12k_mac_register(struct ath12k_base *ab)
 
 	if (test_bit(ATH12K_FLAG_REGISTERED, &ab->dev_flags))
 		return 0;
+
+	ath12k_debugfs_pdev_create(ab);
 
 	/* Initialize channel counters frequency value in hertz */
 	ab->cc_freq_hz = 320000;
