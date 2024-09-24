@@ -5726,6 +5726,14 @@ static int ath12k_mac_op_sta_state(struct ieee80211_hw *hw,
 		}
 	}
 
+	/* in ML station scenario, once client is authorized, activate all
+	 * partner links
+	 */
+	if (ieee80211_vif_is_mld(vif) &&
+	    vif->type == NL80211_IFTYPE_STATION &&
+	    new_state == IEEE80211_STA_AUTHORIZED)
+		ieee80211_set_active_links_async(vif,
+						 ieee80211_vif_usable_links(vif));
 exit:
 	mutex_unlock(&ah->conf_mutex);
 	return ret;
@@ -5993,6 +6001,17 @@ static int ath12k_mac_op_change_sta_links(struct ieee80211_hw *hw,
 	mutex_unlock(&ah->conf_mutex);
 
 	return ret;
+}
+
+static bool ath12k_mac_op_can_activate_links(struct ieee80211_hw *hw,
+					     struct ieee80211_vif *vif,
+					     u16 active_links)
+{
+	/* TODO: Handle recovery case */
+	ath12k_dbg(NULL, ATH12K_DBG_MAC,
+		   "mac activate links 0x%x\n", active_links);
+
+	return true;
 }
 
 static int ath12k_conf_tx_uapsd(struct ath12k_link_vif *arvif,
@@ -10331,6 +10350,7 @@ static const struct ieee80211_ops ath12k_ops = {
 	.remain_on_channel              = ath12k_mac_op_remain_on_channel,
 	.cancel_remain_on_channel       = ath12k_mac_op_cancel_remain_on_channel,
 	.change_sta_links               = ath12k_mac_op_change_sta_links,
+	.can_activate_links             = ath12k_mac_op_can_activate_links,
 #ifdef CONFIG_PM
 	.suspend			= ath12k_wow_op_suspend,
 	.resume				= ath12k_wow_op_resume,
