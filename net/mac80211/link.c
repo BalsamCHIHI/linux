@@ -351,6 +351,53 @@ static int _ieee80211_set_active_links(struct ieee80211_sub_if_data *sdata,
 		}
 	}
 
+	for_each_set_bit(link_id, &add, IEEE80211_MLD_MAX_NUM_LINKS) {
+		struct ieee80211_link_data *link;
+
+		link = sdata_dereference(sdata->link[link_id], sdata);
+
+		/*
+		 * This call really should not fail. Unfortunately, it appears
+		 * that this may happen occasionally with some drivers. Should
+		 * it happen, we are stuck in a bad place as going backwards is
+		 * not really feasible.
+		 *
+		 * So lets just tell link_use_channel that it must not fail to
+		 * assign the channel context (from mac80211's perspective) and
+		 * assume the driver is going to trigger a recovery flow if it
+		 * had a failure.
+		 * That really is not great nor guaranteed to work. But at least
+		 * the internal mac80211 state remains consistent and there is
+		 * a chance that we can recover.
+		 */
+		ret = _ieee80211_link_use_channel(link,
+						  &link->conf->chanreq,
+						  IEEE80211_CHANCTX_SHARED,
+						  true);
+		WARN_ON_ONCE(ret);
+
+		/*
+		 * inform about the link info changed parameters after all
+		 * stations are also added
+		 */
+		ieee80211_mgd_set_link_qos_params(link);
+		ieee80211_link_info_change_notify(sdata, link,
+						  BSS_CHANGED_ERP_CTS_PROT |
+						  BSS_CHANGED_ERP_PREAMBLE |
+						  BSS_CHANGED_ERP_SLOT |
+						  BSS_CHANGED_HT |
+						  BSS_CHANGED_BASIC_RATES |
+						  BSS_CHANGED_BSSID |
+						  BSS_CHANGED_CQM |
+						  BSS_CHANGED_QOS |
+						  BSS_CHANGED_TXPOWER |
+						  BSS_CHANGED_BANDWIDTH |
+						  BSS_CHANGED_TWT |
+						  BSS_CHANGED_HE_OBSS_PD |
+						  BSS_CHANGED_HE_BSS_COLOR);
+
+	}
+
 	for_each_set_bit(link_id, &rem, IEEE80211_MLD_MAX_NUM_LINKS) {
 		struct ieee80211_link_data *link;
 
@@ -409,48 +456,6 @@ static int _ieee80211_set_active_links(struct ieee80211_sub_if_data *sdata,
 		 * not switched yet...
 		 */
 		__ieee80211_sta_recalc_aggregates(sta, active_links);
-	}
-
-	for_each_set_bit(link_id, &add, IEEE80211_MLD_MAX_NUM_LINKS) {
-		struct ieee80211_link_data *link;
-
-		link = sdata_dereference(sdata->link[link_id], sdata);
-
-		/*
-		 * This call really should not fail. Unfortunately, it appears
-		 * that this may happen occasionally with some drivers. Should
-		 * it happen, we are stuck in a bad place as going backwards is
-		 * not really feasible.
-		 *
-		 * So lets just tell link_use_channel that it must not fail to
-		 * assign the channel context (from mac80211's perspective) and
-		 * assume the driver is going to trigger a recovery flow if it
-		 * had a failure.
-		 * That really is not great nor guaranteed to work. But at least
-		 * the internal mac80211 state remains consistent and there is
-		 * a chance that we can recover.
-		 */
-		ret = _ieee80211_link_use_channel(link,
-						  &link->conf->chanreq,
-						  IEEE80211_CHANCTX_SHARED,
-						  true);
-		WARN_ON_ONCE(ret);
-
-		ieee80211_mgd_set_link_qos_params(link);
-		ieee80211_link_info_change_notify(sdata, link,
-						  BSS_CHANGED_ERP_CTS_PROT |
-						  BSS_CHANGED_ERP_PREAMBLE |
-						  BSS_CHANGED_ERP_SLOT |
-						  BSS_CHANGED_HT |
-						  BSS_CHANGED_BASIC_RATES |
-						  BSS_CHANGED_BSSID |
-						  BSS_CHANGED_CQM |
-						  BSS_CHANGED_QOS |
-						  BSS_CHANGED_TXPOWER |
-						  BSS_CHANGED_BANDWIDTH |
-						  BSS_CHANGED_TWT |
-						  BSS_CHANGED_HE_OBSS_PD |
-						  BSS_CHANGED_HE_BSS_COLOR);
 	}
 
 	old_active = sdata->vif.active_links;
