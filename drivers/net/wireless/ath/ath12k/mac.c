@@ -3117,33 +3117,45 @@ static void ath12k_bss_assoc(struct ath12k *ar,
 	struct ath12k_vif *ahvif = arvif->ahvif;
 	struct ieee80211_vif *vif = ath12k_ahvif_to_vif(ahvif);
 	struct ath12k_wmi_vdev_up_params params = {};
-	struct ath12k_wmi_peer_assoc_arg peer_arg;
+	struct ath12k_wmi_peer_assoc_arg peer_arg = {0};
+	struct ieee80211_link_sta *link_sta;
 	struct ath12k_link_sta *arsta;
 	struct ieee80211_sta *ap_sta;
 	struct ath12k_sta *ahsta;
 	struct ath12k_peer *peer;
 	bool is_auth = false;
+	u8 link_id = bss_conf->link_id;
 	int ret;
 
 	lockdep_assert_held(&ar->conf_mutex);
 
-	ath12k_dbg(ar->ab, ATH12K_DBG_MAC, "mac vdev %i assoc bssid %pM aid %d\n",
-		   arvif->vdev_id, arvif->bssid, ahvif->aid);
+	ath12k_dbg(ar->ab, ATH12K_DBG_MAC,
+		   "mac vdev %i link id %u assoc bssid %pM aid %d\n",
+		   arvif->vdev_id, link_id, arvif->bssid, ahvif->aid);
 
 	rcu_read_lock();
 
-	ap_sta = ieee80211_find_sta(vif, bss_conf->bssid);
+	/* During ML connection, cfg.ap_addr has the MLD address. For
+	 * non-ML connection, it has the BSSID.
+	 */
+	ap_sta = ieee80211_find_sta(vif, vif->cfg.ap_addr);
 	if (!ap_sta) {
 		ath12k_warn(ar->ab, "failed to find station entry for bss %pM vdev %i\n",
-			    bss_conf->bssid, arvif->vdev_id);
+			    vif->cfg.ap_addr, arvif->vdev_id);
 		rcu_read_unlock();
 		return;
 	}
 
 	ahsta = ath12k_sta_to_ahsta(ap_sta);
-	arsta = &ahsta->deflink;
-
+	arsta = rcu_dereference_protected(ahsta->link[link_id],
+					  lockdep_is_held(&ar->conf_mutex));
 	if (WARN_ON(!arsta)) {
+		rcu_read_unlock();
+		return;
+	}
+
+	link_sta = ath12k_get_link_sta(arsta);
+	if (WARN_ON(!link_sta)) {
 		rcu_read_unlock();
 		return;
 	}
@@ -3166,8 +3178,7 @@ static void ath12k_bss_assoc(struct ath12k *ar,
 	}
 
 	ret = ath12k_setup_peer_smps(ar, arvif, bss_conf->bssid,
-				     &ap_sta->deflink.ht_cap,
-				     &ap_sta->deflink.he_6ghz_capa);
+				     &link_sta->ht_cap, &link_sta->he_6ghz_capa);
 	if (ret) {
 		ath12k_warn(ar->ab, "failed to setup peer SMPS for vdev %d: %d\n",
 			    arvif->vdev_id, ret);
