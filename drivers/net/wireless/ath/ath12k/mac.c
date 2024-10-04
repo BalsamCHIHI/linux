@@ -6877,7 +6877,7 @@ static void ath12k_mgmt_over_wmi_tx_purge(struct ath12k *ar)
 		ath12k_mgmt_over_wmi_tx_drop(ar, skb);
 }
 
-static void ath12k_mgmt_over_wmi_tx_work(struct work_struct *work)
+static void ath12k_mgmt_over_wmi_tx_work(struct wiphy *wiphy, struct wiphy_work *work)
 {
 	struct ath12k *ar = container_of(work, struct ath12k, wmi_mgmt_tx_work);
 	struct ath12k_hw *ah = ar->ah;
@@ -6886,8 +6886,6 @@ static void ath12k_mgmt_over_wmi_tx_work(struct work_struct *work)
 	struct ath12k_link_vif *arvif;
 	struct sk_buff *skb;
 	int ret;
-
-	wiphy_lock(ah->hw->wiphy);
 
 	while ((skb = skb_dequeue(&ar->wmi_mgmt_tx_queue)) != NULL) {
 		skb_cb = ATH12K_SKB_CB(skb);
@@ -6922,8 +6920,6 @@ static void ath12k_mgmt_over_wmi_tx_work(struct work_struct *work)
 			ath12k_mgmt_over_wmi_tx_drop(ar, skb);
 		}
 	}
-
-	wiphy_unlock(ah->hw->wiphy);
 }
 
 static int ath12k_mac_mgmt_tx(struct ath12k *ar, struct sk_buff *skb,
@@ -6953,7 +6949,7 @@ static int ath12k_mac_mgmt_tx(struct ath12k *ar, struct sk_buff *skb,
 
 	skb_queue_tail(q, skb);
 	atomic_inc(&ar->num_pending_mgmt_tx);
-	ieee80211_queue_work(ath12k_ar_to_hw(ar), &ar->wmi_mgmt_tx_work);
+	wiphy_work_queue(ath12k_ar_to_hw(ar)->wiphy, &ar->wmi_mgmt_tx_work);
 
 	return 0;
 }
@@ -7133,10 +7129,12 @@ static void ath12k_mac_op_tx(struct ieee80211_hw *hw,
 
 void ath12k_mac_drain_tx(struct ath12k *ar)
 {
+	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
+
 	/* make sure rcu-protected mac80211 tx path itself is drained */
 	synchronize_net();
 
-	cancel_work_sync(&ar->wmi_mgmt_tx_work);
+	wiphy_work_cancel(ath12k_ar_to_hw(ar)->wiphy, &ar->wmi_mgmt_tx_work);
 	ath12k_mgmt_over_wmi_tx_purge(ar);
 }
 
@@ -7252,6 +7250,8 @@ static void ath12k_drain_tx(struct ath12k_hw *ah)
 {
 	struct ath12k *ar;
 	int i;
+
+	lockdep_assert_wiphy(ah->hw->wiphy);
 
 	for_each_ar(ah, ar, i)
 		ath12k_mac_drain_tx(ar);
@@ -9311,6 +9311,8 @@ static int ath12k_mac_flush(struct ath12k *ar)
 
 int ath12k_mac_wait_tx_complete(struct ath12k *ar)
 {
+	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
+
 	ath12k_mac_drain_tx(ar);
 	return ath12k_mac_flush(ar);
 }
@@ -9346,7 +9348,7 @@ static void ath12k_mac_op_flush(struct ieee80211_hw *hw, struct ieee80211_vif *v
 	 * Hence, flush the tx work before acquiring mutex here.
 	 */
 	for_each_ar(ah, ar, i)
-		flush_work(&ar->wmi_mgmt_tx_work);
+		wiphy_work_flush(hw->wiphy, &ar->wmi_mgmt_tx_work);
 
 	ahvif = ath12k_vif_to_ahvif(vif);
 	links = ahvif->links_map;
@@ -10798,7 +10800,7 @@ static void ath12k_mac_setup(struct ath12k *ar)
 	INIT_DELAYED_WORK(&ar->scan.timeout, ath12k_scan_timeout_work);
 	INIT_WORK(&ar->regd_update_work, ath12k_regd_update_work);
 
-	INIT_WORK(&ar->wmi_mgmt_tx_work, ath12k_mgmt_over_wmi_tx_work);
+	wiphy_work_init(&ar->wmi_mgmt_tx_work, ath12k_mgmt_over_wmi_tx_work);
 	skb_queue_head_init(&ar->wmi_mgmt_tx_queue);
 }
 
