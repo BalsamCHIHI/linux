@@ -3328,6 +3328,8 @@ static int ath12k_qmi_event_server_arrive(struct ath12k_qmi *qmi)
 	mutex_lock(&ag->mutex_lock);
 	if (ath12k_qmi_hw_group_host_cap_ready(ag)) {
 		ath12k_core_hw_group_set_mlo_capable(ag);
+		ath12k_dbg(NULL, ATH12K_DBG_BOOT, "hardware group %d mlo_capable %d\n",
+			   ag->id, ag->mlo_capable);
 		block_ab = ath12k_qmi_hw_group_find_blocked_chip(ag);
 		if (block_ab)
 			ath12k_qmi_trigger_host_cap(block_ab);
