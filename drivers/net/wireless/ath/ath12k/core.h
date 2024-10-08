@@ -813,6 +813,12 @@ struct ath12k_soc_dp_stats {
 	struct ath12k_soc_dp_tx_err_stats tx_err;
 };
 
+struct ath12k_mlo_memory {
+	struct target_mem_chunk chunk[ATH12K_QMI_WLANFW_MAX_NUM_MEM_SEG_V01];
+	int mlo_mem_size;
+	bool init_done;
+};
+
 /* Holds info on the group of devices that are registered as a single wiphy */
 struct ath12k_hw_group {
 	struct list_head list;
@@ -842,6 +848,7 @@ struct ath12k_hw_group {
 	struct ath12k_hw *ah[ATH12K_GROUP_MAX_RADIO];
 	u8 num_hw;
 	bool mlo_capable;
+	struct ath12k_mlo_memory mlo_mem;
 };
 
 #define ATH12K_WSI_MAX_ADJACENT_DEVICES   2
