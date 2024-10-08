@@ -1403,6 +1403,7 @@ ath12k_core_hw_group_alloc(u8 id, u8 max_devices)
 	ag->num_devices = max_devices;
 	list_add(&ag->list, &ath12k_hw_group_list);
 	mutex_init(&ag->mutex_lock);
+	ag->mlo_capable = false;
 
 	return ag;
 }
@@ -1417,23 +1418,125 @@ static void ath12k_core_hw_group_free(struct ath12k_hw_group *ag)
 	mutex_unlock(&ath12k_ag_list_lock);
 }
 
+/* This function needs to be used only when dt has multi chip grouping information */
+static struct ath12k_hw_group *ath12k_core_hw_group_find_by_id(u8 group_id)
+{
+	struct ath12k_hw_group *ag;
+
+	/* group ids will be unique only for multi chip group */
+	list_for_each_entry(ag, &ath12k_hw_group_list, list) {
+		if (group_id == ag->id && ag->num_devices > 1)
+			return ag;
+	}
+
+	return NULL;
+}
+
 static struct ath12k_hw_group *ath12k_core_assign_hw_group(struct ath12k_base *ab)
 {
 	struct ath12k_hw_group *ag;
-	u32 group_id = ATH12K_INVALID_GROUP_ID;
+	u32 group_id = ATH12K_INVALID_GROUP_ID, num_devices;
+	struct device *dev = ab->dev;
+	struct device_node *mlo;
+	struct ath12k_wsi_info *wsi_info = &ab->wsi_info;
+	int i;
 
 	lockdep_assert_held(&ath12k_ag_list_lock);
 
-	/* The grouping of multiple devices will be done based on device tree file.
-	 * TODO: device tree file parsing to know about the devices involved in group.
+	/* The grouping of multiple devices will be done based on device
+	 * tree file.
 	 *
-	 * The platforms that do not have any valid group information would have each
-	 * device to be part of its own invalid group.
-	 *
-	 * Currently, we are not parsing any device tree information and hence, grouping
-	 * of multiple devices is not involved. Thus, single device is added to device
-	 * group.
+	 * The platforms that do not have any valid group information would
+	 * have each device to be part of its own invalid group.
 	 */
+	mlo = of_get_child_by_name(dev->of_node, "wsi");
+	if (!mlo) {
+		goto invalid_group;
+	} else {
+		if (of_property_read_u32(mlo, "qcom,wsi-group-id", &group_id)) {
+			ath12k_err(ab, "wsi-group-id not found\n");
+			goto invalid_group;
+		}
+	}
+
+	if (of_property_read_u32(mlo, "qcom,wsi-num-devices", &num_devices)) {
+		ath12k_err(ab, "wsi-num-devices not found\n");
+		group_id = ATH12K_INVALID_GROUP_ID;
+		goto invalid_group;
+	}
+
+	if (num_devices > ATH12K_MAX_SOCS) {
+		ath12k_warn(ab, "num_devices advertised %d is more than limit %d\n",
+			    num_devices, ATH12K_MAX_SOCS);
+		group_id = ATH12K_INVALID_GROUP_ID;
+		goto invalid_group;
+	}
+
+	/* Structure of device info:
+	 *	<device_idx, adj_device_idx[0], adj_device_idx[1]>
+	 * Offsets:
+	 *        offset 0       offset 1          offset 2
+	 */
+	if (of_property_read_u32_index(mlo, "qcom,wsi-device-info", 0,
+				       &wsi_info->device_idx)) {
+		ath12k_err(ab, "device_idx not found\n");
+		group_id = ATH12K_INVALID_GROUP_ID;
+		goto invalid_group;
+	}
+
+	for (i = 0; i < ATH12K_WSI_MAX_ADJACENT_DEVICES; i++) {
+		if (of_property_read_u32_index(mlo, "qcom,wsi-device-info",
+					       1 + i,
+					       &wsi_info->adj_device_idx[i])) {
+			ath12k_err(ab, "adj_device_idx[%d] is not configured\n",
+				   i);
+			group_id = ATH12K_INVALID_GROUP_ID;
+			goto invalid_group;
+		}
+	}
+
+	/* If both adjacent device_idx are same, this means ultimately only
+	 * one adjacent device is there
+	 */
+	if (wsi_info->adj_device_idx[0] == wsi_info->adj_device_idx[1])
+		wsi_info->num_adj_devices = 1;
+	else
+		wsi_info->num_adj_devices = ATH12K_WSI_MAX_ADJACENT_DEVICES;
+
+	ath12k_dbg(ab, ATH12K_DBG_BOOT,
+		   "device_info: device_idx=%d, num_adj_devices=%d\n",
+		   wsi_info->device_idx, wsi_info->num_adj_devices);
+
+	for (i = 0; i < wsi_info->num_adj_devices; i++)
+		ath12k_dbg(ab, ATH12K_DBG_BOOT, " * adj_device_idx[%d]: %d\n",
+			   i, wsi_info->adj_device_idx[i]);
+
+	/* Currently only one group of multiple devices are supported,
+	 * since we use group id ATH12K_INVALID_GROUP_ID for single
+	 * device group which didn't have dt entry, there could be many
+	 * groups with same group id, i.e ATH12K_INVALID_GROUP_ID. So
+	 * default group id of ATH12K_INVALID_GROUP_ID combined with
+	 * num devices in ath12k_hw_group determines if the group is
+	 * multi device or single device group
+	 */
+	ag = ath12k_core_hw_group_find_by_id(group_id);
+	if (!ag) {
+		ag = ath12k_core_hw_group_alloc(group_id, num_devices);
+		if (!ag) {
+			ath12k_warn(ab, "unable to create new hw group\n");
+			return NULL;
+		}
+		goto exit;
+	} else if (test_bit(ATH12K_GROUP_FLAG_UNREGISTER, &ag->flags)) {
+		ath12k_dbg(ab, ATH12K_DBG_BOOT, "group id %d in unregister state\n",
+			   ag->id);
+		group_id = ATH12K_INVALID_GROUP_ID;
+		goto invalid_group;
+	} else {
+		goto exit;
+	}
+
+invalid_group:
 	ag = ath12k_core_hw_group_alloc(group_id, 1);
 	if (!ag) {
 		ath12k_warn(ab, "unable to create new hw group\n");
@@ -1441,10 +1544,16 @@ static struct ath12k_hw_group *ath12k_core_assign_hw_group(struct ath12k_base *a
 	}
 	ath12k_dbg(ab, ATH12K_DBG_BOOT, "Single device is added to hardware group\n");
 
+exit:
+	if (ag->num_probed >= ag->num_devices) {
+		ath12k_warn(ab, "unable to add new device to group, max limit reached\n");
+		group_id = ATH12K_INVALID_GROUP_ID;
+		goto invalid_group;
+	}
+
 	ab->device_id = ag->num_probed++;
 	ag->ab[ab->device_id] = ab;
 	ab->ag = ag;
-	ag->mlo_capable = false;
 
 	return ag;
 }
@@ -1511,6 +1620,14 @@ static void ath12k_core_hw_group_cleanup(struct ath12k_hw_group *ag)
 		return;
 
 	mutex_lock(&ag->mutex_lock);
+
+	if (test_bit(ATH12K_GROUP_FLAG_UNREGISTER, &ag->flags)) {
+		mutex_unlock(&ag->mutex_lock);
+		return;
+	}
+
+	set_bit(ATH12K_GROUP_FLAG_UNREGISTER, &ag->flags);
+
 	ath12k_core_hw_group_stop(ag);
 
 	for (i = 0; i < ag->num_devices; i++) {

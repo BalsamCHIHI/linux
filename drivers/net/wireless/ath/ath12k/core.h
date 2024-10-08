@@ -211,6 +211,7 @@ enum ath12k_scan_state {
 
 enum ath12k_hw_group_flags {
 	ATH12K_GROUP_FLAG_REGISTERED,
+	ATH12K_GROUP_FLAG_UNREGISTER,
 };
 
 enum ath12k_dev_flags {
@@ -843,6 +844,14 @@ struct ath12k_hw_group {
 	bool mlo_capable;
 };
 
+#define ATH12K_WSI_MAX_ADJACENT_DEVICES   2
+
+struct ath12k_wsi_info {
+	u32 device_idx;
+	u32 num_adj_devices;
+	u32 adj_device_idx[ATH12K_WSI_MAX_ADJACENT_DEVICES];
+};
+
 /* Master structure to hold the hw data which may be used in core module */
 struct ath12k_base {
 	enum ath12k_hw_rev hw_rev;
@@ -1024,6 +1033,7 @@ struct ath12k_base {
 	struct notifier_block panic_nb;
 
 	struct ath12k_hw_group *ag;
+	struct ath12k_wsi_info wsi_info;
 
 	/* must be last */
 	u8 drv_priv[] __aligned(sizeof(void *));
