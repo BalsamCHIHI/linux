@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 /*
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/vmalloc.h>
@@ -17,7 +17,11 @@ void ath12k_info(struct ath12k_base *ab, const char *fmt, ...)
 
 	va_start(args, fmt);
 	vaf.va = &args;
-	dev_info(ab->dev, "%pV", &vaf);
+	if (ab)
+		dev_info(ab->dev, "%pV", &vaf);
+	else
+		pr_info("ath12k: %pV", &vaf);
+
 	/* TODO: Trace the log */
 	va_end(args);
 }
@@ -31,7 +35,12 @@ void ath12k_err(struct ath12k_base *ab, const char *fmt, ...)
 
 	va_start(args, fmt);
 	vaf.va = &args;
-	dev_err(ab->dev, "%pV", &vaf);
+
+	if (ab)
+		dev_err(ab->dev, "%pV", &vaf);
+	else
+		pr_info("ath12k: %pV", &vaf);
+
 	/* TODO: Trace the log */
 	va_end(args);
 }
@@ -45,7 +54,12 @@ void ath12k_warn(struct ath12k_base *ab, const char *fmt, ...)
 
 	va_start(args, fmt);
 	vaf.va = &args;
-	dev_warn_ratelimited(ab->dev, "%pV", &vaf);
+
+	if (ab)
+		dev_warn_ratelimited(ab->dev, "%pV", &vaf);
+	else
+		pr_warn_ratelimited("ath12k: %pV", &vaf);
+
 	/* TODO: Trace the log */
 	va_end(args);
 }
@@ -63,8 +77,12 @@ void __ath12k_dbg(struct ath12k_base *ab, enum ath12k_debug_mask mask,
 	vaf.fmt = fmt;
 	vaf.va = &args;
 
-	if (ath12k_debug_mask & mask)
-		dev_printk(KERN_DEBUG, ab->dev, "%pV", &vaf);
+	if (ath12k_debug_mask & mask) {
+		if (ab)
+			dev_printk(KERN_DEBUG, ab->dev, "%pV", &vaf);
+		else
+			pr_devel("ath12k: %pV", &vaf);
+	}
 
 	/* TODO: trace log */
 
