@@ -487,6 +487,10 @@ static void ieee80211_do_stop(struct ieee80211_sub_if_data *sdata, bool going_do
 			break;
 		list_del_rcu(&sdata->u.mntr.list);
 		break;
+	case NL80211_IFTYPE_AP_VLAN:
+		sdata->wdev.valid_links = 0;
+		ieee80211_vif_clear_links(sdata);
+		break;
 	default:
 		break;
 	}
@@ -1264,7 +1268,7 @@ int ieee80211_do_open(struct wireless_dev *wdev, bool coming_up)
 	struct net_device *dev = wdev->netdev;
 	struct ieee80211_local *local = sdata->local;
 	u64 changed = 0;
-	int res;
+	int link_id, res;
 	u32 hw_reconf_flags = 0;
 
 	lockdep_assert_wiphy(local->hw.wiphy);
@@ -1295,6 +1299,8 @@ int ieee80211_do_open(struct wireless_dev *wdev, bool coming_up)
 
 		sdata->crypto_tx_tailroom_needed_cnt +=
 			master->crypto_tx_tailroom_needed_cnt;
+
+		ieee80211_apvlan_link_setup(sdata);
 
 		break;
 		}
@@ -1352,7 +1358,20 @@ int ieee80211_do_open(struct wireless_dev *wdev, bool coming_up)
 	case NL80211_IFTYPE_AP_VLAN:
 		/* no need to tell driver, but set carrier and chanctx */
 		if (sdata->bss->active) {
-			ieee80211_link_vlan_copy_chanctx(&sdata->deflink);
+			struct ieee80211_link_data *link;
+			unsigned long valid_links = sdata->vif.valid_links;
+
+			if (valid_links) {
+				for_each_set_bit(link_id, &valid_links,
+						 IEEE80211_MLD_MAX_NUM_LINKS) {
+					link = sdata_dereference(sdata->link[link_id],
+								 sdata);
+					ieee80211_link_vlan_copy_chanctx(link);
+				}
+			} else {
+				ieee80211_link_vlan_copy_chanctx(&sdata->deflink);
+			}
+
 			netif_carrier_on(dev);
 			ieee80211_set_vif_encap_ops(sdata);
 		} else {
