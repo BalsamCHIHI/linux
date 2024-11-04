@@ -3029,6 +3029,8 @@ static void ath12k_peer_assoc_h_mlo(struct ath12k_link_sta *arsta,
 	u8 link_id;
 	int i;
 
+	lockdep_assert_wiphy(ahsta->ahvif->ah->hw->wiphy);
+
 	if (!sta->mlo || ahsta->ml_peer_id == ATH12K_MLO_PEER_ID_INVALID)
 		return;
 
