@@ -3019,6 +3019,8 @@ static void ath12k_peer_assoc_h_mlo(struct ath12k_link_sta *arsta,
 	u8 link_id;
 	int i;
 
+	lockdep_assert_wiphy(ahsta->ahvif->ah->hw->wiphy);
+
 	if (!sta->mlo || ahsta->ml_peer_id == ATH12K_MLO_PEER_ID_INVALID)
 		return;
 
@@ -6886,6 +6888,8 @@ static void ath12k_mgmt_over_wmi_tx_work(struct wiphy *wiphy, struct wiphy_work 
 	struct ath12k_link_vif *arvif;
 	struct sk_buff *skb;
 	int ret;
+
+	lockdep_assert_wiphy(wiphy);
 
 	while ((skb = skb_dequeue(&ar->wmi_mgmt_tx_queue)) != NULL) {
 		skb_cb = ATH12K_SKB_CB(skb);
