@@ -5714,10 +5714,10 @@ out:
 	return ret;
 }
 
-static void ath12k_mac_op_sta_rc_update(struct ieee80211_hw *hw,
-					struct ieee80211_vif *vif,
-					struct ieee80211_link_sta *link_sta,
-					u32 changed)
+static void ath12k_mac_op_link_sta_rc_update(struct ieee80211_hw *hw,
+					     struct ieee80211_vif *vif,
+					     struct ieee80211_link_sta *link_sta,
+					     u32 changed)
 {
 	struct ieee80211_sta *sta = link_sta->sta;
 	struct ath12k *ar;
@@ -5727,33 +5727,29 @@ static void ath12k_mac_op_sta_rc_update(struct ieee80211_hw *hw,
 	struct ath12k_link_vif *arvif;
 	struct ath12k_peer *peer;
 	u32 bw, smps;
-	/* TODO: use proper link id once link sta specific rc update support is
-	 * available in mac80211.
-	 */
-	u8 link_id = ATH12K_DEFAULT_LINK_ID;
 
 	/* KVALO: ath12k_get_ar_by_vif() requires wiphy_lock() to be held
 	 * but we cannot take it as we are atomic here
 	 */
-	ar = ath12k_get_ar_by_vif(hw, vif, link_id);
+	ar = ath12k_get_ar_by_vif(hw, vif, link_sta->link_id);
 	if (!ar) {
 		WARN_ON_ONCE(1);
 		return;
 	}
 
 	rcu_read_lock();
-	arvif = rcu_dereference(ahvif->link[link_id]);
+	arvif = rcu_dereference(ahvif->link[link_sta->link_id]);
 	if (!arvif) {
 		ath12k_warn(ar->ab, "mac sta rc update failed to fetch link vif on link id %u for peer %pM\n",
-			    link_id, sta->addr);
+			    link_sta->link_id, sta->addr);
 		rcu_read_unlock();
 		return;
 	}
-	arsta = rcu_dereference(ahsta->link[link_id]);
+	arsta = rcu_dereference(ahsta->link[link_sta->link_id]);
 	if (!arsta) {
 		rcu_read_unlock();
 		ath12k_warn(ar->ab, "mac sta rc update failed to fetch link sta on link id %u for peer %pM\n",
-			    link_id, sta->addr);
+			    link_sta->link_id, sta->addr);
 		return;
 	}
 	spin_lock_bh(&ar->ab->base_lock);
@@ -10168,7 +10164,7 @@ static const struct ieee80211_ops ath12k_ops = {
 	.set_rekey_data	                = ath12k_mac_op_set_rekey_data,
 	.sta_state                      = ath12k_mac_op_sta_state,
 	.sta_set_txpwr			= ath12k_mac_op_sta_set_txpwr,
-	.link_sta_rc_update		= ath12k_mac_op_sta_rc_update,
+	.link_sta_rc_update		= ath12k_mac_op_link_sta_rc_update,
 	.conf_tx                        = ath12k_mac_op_conf_tx,
 	.set_antenna			= ath12k_mac_op_set_antenna,
 	.get_antenna			= ath12k_mac_op_get_antenna,
