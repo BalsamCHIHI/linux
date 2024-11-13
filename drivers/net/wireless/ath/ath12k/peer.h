@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-3-Clause-Clear */
 /*
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef ATH12K_PEER_H
@@ -18,6 +18,8 @@ struct ppdu_user_delayba {
 	u32 rate_flags;
 	u32 resp_rate_flags;
 };
+
+#define ATH12K_PEER_ML_ID_VALID         BIT(13)
 
 struct ath12k_peer {
 	struct list_head list;
@@ -47,6 +49,14 @@ struct ath12k_peer {
 
 	/* protected by ab->data_lock */
 	bool dp_setup_done;
+
+	u16 ml_id;
+};
+
+struct ath12k_ml_peer {
+	struct list_head list;
+	u8 addr[ETH_ALEN];
+	u16 id;
 };
 
 void ath12k_peer_unmap_event(struct ath12k_base *ab, u16 peer_id);
@@ -59,12 +69,14 @@ struct ath12k_peer *ath12k_peer_find_by_addr(struct ath12k_base *ab,
 struct ath12k_peer *ath12k_peer_find_by_id(struct ath12k_base *ab, int peer_id);
 void ath12k_peer_cleanup(struct ath12k *ar, u32 vdev_id);
 int ath12k_peer_delete(struct ath12k *ar, u32 vdev_id, u8 *addr);
-int ath12k_peer_create(struct ath12k *ar, struct ath12k_vif *arvif,
+int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 		       struct ieee80211_sta *sta,
 		       struct ath12k_wmi_peer_create_arg *arg);
 int ath12k_wait_for_peer_delete_done(struct ath12k *ar, u32 vdev_id,
 				     const u8 *addr);
 bool ath12k_peer_exist_by_vdev_id(struct ath12k_base *ab, int vdev_id);
 struct ath12k_peer *ath12k_peer_find_by_ast(struct ath12k_base *ab, int ast_hash);
+int ath12k_peer_ml_create(struct ath12k_hw *ah, struct ieee80211_sta *sta);
+int ath12k_peer_ml_delete(struct ath12k_hw *ah, struct ieee80211_sta *sta);
 
 #endif /* _PEER_H_ */
