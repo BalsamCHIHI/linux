@@ -22,6 +22,11 @@ unsigned int ath12k_debug_mask;
 module_param_named(debug_mask, ath12k_debug_mask, uint, 0644);
 MODULE_PARM_DESC(debug_mask, "Debugging mask");
 
+/* protected with ath12k_hw_group_mutex */
+static struct list_head ath12k_hw_group_list = LIST_HEAD_INIT(ath12k_hw_group_list);
+
+static DEFINE_MUTEX(ath12k_hw_group_mutex);
+
 static int ath12k_core_rfkill_config(struct ath12k_base *ab)
 {
 	struct ath12k *ar;
@@ -599,6 +604,8 @@ u32 ath12k_core_get_max_num_tids(struct ath12k_base *ab)
 
 static void ath12k_core_stop(struct ath12k_base *ab)
 {
+	ath12k_core_stopped(ab);
+
 	if (!test_bit(ATH12K_FLAG_CRASH_FLUSH, &ab->dev_flags))
 		ath12k_qmi_firmware_stop(ab);
 
@@ -738,6 +745,8 @@ static int ath12k_core_start(struct ath12k_base *ab,
 {
 	int ret;
 
+	lockdep_assert_held(&ab->core_lock);
+
 	ret = ath12k_wmi_attach(ab);
 	if (ret) {
 		ath12k_err(ab, "failed to attach wmi: %d\n", ret);
@@ -831,6 +840,10 @@ static int ath12k_core_start(struct ath12k_base *ab,
 		/* ACPI is optional so continue in case of an error */
 		ath12k_dbg(ab, ATH12K_DBG_BOOT, "acpi failed: %d\n", ret);
 
+	if (!test_bit(ATH12K_FLAG_RECOVERY, &ab->dev_flags))
+		/* Indicate the core start in the appropriate group */
+		ath12k_core_started(ab);
+
 	return 0;
 
 err_reo_cleanup:
@@ -839,6 +852,95 @@ err_hif_stop:
 	ath12k_hif_stop(ab);
 err_wmi_detach:
 	ath12k_wmi_detach(ab);
+	return ret;
+}
+
+static void ath12k_core_device_cleanup(struct ath12k_base *ab)
+{
+	mutex_lock(&ab->core_lock);
+
+	ath12k_hif_irq_disable(ab);
+	ath12k_core_pdev_destroy(ab);
+
+	mutex_unlock(&ab->core_lock);
+}
+
+static void ath12k_core_hw_group_stop(struct ath12k_hw_group *ag)
+{
+	struct ath12k_base *ab;
+	int i;
+
+	lockdep_assert_held(&ag->mutex);
+
+	clear_bit(ATH12K_GROUP_FLAG_REGISTERED, &ag->flags);
+
+	ath12k_mac_unregister(ag);
+
+	for (i = ag->num_devices - 1; i >= 0; i--) {
+		ab = ag->ab[i];
+		if (!ab)
+			continue;
+		ath12k_core_device_cleanup(ab);
+	}
+
+	ath12k_mac_destroy(ag);
+}
+
+static int ath12k_core_hw_group_start(struct ath12k_hw_group *ag)
+{
+	struct ath12k_base *ab;
+	int ret, i;
+
+	lockdep_assert_held(&ag->mutex);
+
+	if (test_bit(ATH12K_GROUP_FLAG_REGISTERED, &ag->flags))
+		goto core_pdev_create;
+
+	ret = ath12k_mac_allocate(ag);
+	if (WARN_ON(ret))
+		return ret;
+
+	ret = ath12k_mac_register(ag);
+	if (WARN_ON(ret))
+		goto err_mac_destroy;
+
+	set_bit(ATH12K_GROUP_FLAG_REGISTERED, &ag->flags);
+
+core_pdev_create:
+	for (i = 0; i < ag->num_devices; i++) {
+		ab = ag->ab[i];
+		if (!ab)
+			continue;
+
+		mutex_lock(&ab->core_lock);
+
+		ret = ath12k_core_pdev_create(ab);
+		if (ret) {
+			ath12k_err(ab, "failed to create pdev core %d\n", ret);
+			mutex_unlock(&ab->core_lock);
+			goto err;
+		}
+
+		ath12k_hif_irq_enable(ab);
+
+		ret = ath12k_core_rfkill_config(ab);
+		if (ret && ret != -EOPNOTSUPP) {
+			mutex_unlock(&ab->core_lock);
+			goto err;
+		}
+
+		mutex_unlock(&ab->core_lock);
+	}
+
+	return 0;
+
+err:
+	ath12k_core_hw_group_stop(ag);
+	return ret;
+
+err_mac_destroy:
+	ath12k_mac_destroy(ag);
+
 	return ret;
 }
 
@@ -859,9 +961,37 @@ static int ath12k_core_start_firmware(struct ath12k_base *ab,
 	return ret;
 }
 
+static inline
+bool ath12k_core_hw_group_start_ready(struct ath12k_hw_group *ag)
+{
+	lockdep_assert_held(&ag->mutex);
+
+	return (ag->num_started == ag->num_devices);
+}
+
+static void ath12k_core_trigger_partner(struct ath12k_base *ab)
+{
+	struct ath12k_hw_group *ag = ab->ag;
+	struct ath12k_base *partner_ab;
+	bool found = false;
+	int i;
+
+	for (i = 0; i < ag->num_devices; i++) {
+		partner_ab = ag->ab[i];
+		if (!partner_ab)
+			continue;
+
+		if (found)
+			ath12k_qmi_trigger_host_cap(partner_ab);
+
+		found = (partner_ab == ab);
+	}
+}
+
 int ath12k_core_qmi_firmware_ready(struct ath12k_base *ab)
 {
-	int ret;
+	struct ath12k_hw_group *ag = ath12k_ab_to_ag(ab);
+	int ret, i;
 
 	ret = ath12k_core_start_firmware(ab, ATH12K_FIRMWARE_MODE_NORMAL);
 	if (ret) {
@@ -881,59 +1011,52 @@ int ath12k_core_qmi_firmware_ready(struct ath12k_base *ab)
 		goto err_firmware_stop;
 	}
 
+	mutex_lock(&ag->mutex);
 	mutex_lock(&ab->core_lock);
+
 	ret = ath12k_core_start(ab, ATH12K_FIRMWARE_MODE_NORMAL);
 	if (ret) {
 		ath12k_err(ab, "failed to start core: %d\n", ret);
 		goto err_dp_free;
 	}
 
-	ret = ath12k_mac_allocate(ab);
-	if (ret) {
-		ath12k_err(ab, "failed to create new hw device with mac80211 :%d\n",
-			   ret);
-		goto err_core_stop;
-	}
-
-	ret = ath12k_mac_register(ab);
-	if (ret) {
-		ath12k_err(ab, "failed register the radio with mac80211: %d\n", ret);
-		goto err_mac_destroy;
-	}
-
-	ret = ath12k_core_pdev_create(ab);
-	if (ret) {
-		ath12k_err(ab, "failed to create pdev core: %d\n", ret);
-		goto err_mac_unregister;
-	}
-
-	ath12k_hif_irq_enable(ab);
-
-	ret = ath12k_core_rfkill_config(ab);
-	if (ret && ret != -EOPNOTSUPP) {
-		ath12k_err(ab, "failed to config rfkill: %d\n", ret);
-		goto err_hif_irq_disable;
-	}
-
 	mutex_unlock(&ab->core_lock);
+
+	if (ath12k_core_hw_group_start_ready(ag)) {
+		ret = ath12k_core_hw_group_start(ag);
+		if (ret) {
+			ath12k_warn(ab, "unable to start hw group\n");
+			goto err_core_stop;
+		}
+		ath12k_dbg(ab, ATH12K_DBG_BOOT, "group %d started\n", ag->id);
+	} else {
+		ath12k_core_trigger_partner(ab);
+	}
+
+	mutex_unlock(&ag->mutex);
 
 	return 0;
 
-err_hif_irq_disable:
-	ath12k_hif_irq_disable(ab);
-	ath12k_core_pdev_destroy(ab);
-err_mac_unregister:
-	ath12k_mac_unregister(ab);
-err_mac_destroy:
-	ath12k_mac_destroy(ab);
 err_core_stop:
-	ath12k_core_stop(ab);
+	for (i = ag->num_devices - 1; i >= 0; i--) {
+		ab = ag->ab[i];
+		if (!ab)
+			continue;
+
+		mutex_lock(&ab->core_lock);
+		ath12k_core_stop(ab);
+		mutex_unlock(&ab->core_lock);
+	}
+	goto exit;
+
 err_dp_free:
 	ath12k_dp_free(ab);
 	mutex_unlock(&ab->core_lock);
 err_firmware_stop:
 	ath12k_qmi_firmware_stop(ab);
 
+exit:
+	mutex_unlock(&ag->mutex);
 	return ret;
 }
 
@@ -1130,6 +1253,14 @@ static void ath12k_core_restart(struct work_struct *work)
 	}
 
 	if (ab->is_reset) {
+		if (!test_bit(ATH12K_FLAG_REGISTERED, &ab->dev_flags)) {
+			atomic_dec(&ab->reset_count);
+			complete(&ab->reset_complete);
+			ab->is_reset = false;
+			atomic_set(&ab->fail_cont_count, 0);
+			ath12k_dbg(ab, ATH12K_DBG_BOOT, "reset success\n");
+		}
+
 		for (i = 0; i < ath12k_get_num_hw(ab); i++) {
 			ah = ath12k_ab_to_ah(ab, i);
 			ieee80211_restart_hw(ah->hw);
@@ -1244,38 +1375,246 @@ static void ath12k_core_panic_notifier_unregister(struct ath12k_base *ab)
 					 &ab->panic_nb);
 }
 
+static inline
+bool ath12k_core_hw_group_create_ready(struct ath12k_hw_group *ag)
+{
+	lockdep_assert_held(&ag->mutex);
+
+	return (ag->num_probed == ag->num_devices);
+}
+
+static struct ath12k_hw_group *ath12k_core_hw_group_alloc(u8 id, u8 max_devices)
+{
+	struct ath12k_hw_group *ag;
+
+	lockdep_assert_held(&ath12k_hw_group_mutex);
+
+	ag = kzalloc(sizeof(*ag), GFP_KERNEL);
+	if (!ag)
+		return NULL;
+
+	ag->id = id;
+	ag->num_devices = max_devices;
+	list_add(&ag->list, &ath12k_hw_group_list);
+	mutex_init(&ag->mutex);
+
+	return ag;
+}
+
+static void ath12k_core_hw_group_free(struct ath12k_hw_group *ag)
+{
+	mutex_lock(&ath12k_hw_group_mutex);
+
+	list_del(&ag->list);
+	kfree(ag);
+
+	mutex_unlock(&ath12k_hw_group_mutex);
+}
+
+static struct ath12k_hw_group *ath12k_core_hw_group_assign(struct ath12k_base *ab)
+{
+	u32 group_id = ATH12K_INVALID_GROUP_ID;
+	struct ath12k_hw_group *ag;
+
+	lockdep_assert_held(&ath12k_hw_group_mutex);
+
+	/* The grouping of multiple devices will be done based on device tree file.
+	 * TODO: device tree file parsing to know about the devices involved in group.
+	 *
+	 * The platforms that do not have any valid group information would have each
+	 * device to be part of its own invalid group.
+	 *
+	 * Currently, we are not parsing any device tree information and hence, grouping
+	 * of multiple devices is not involved. Thus, single device is added to device
+	 * group.
+	 */
+	ag = ath12k_core_hw_group_alloc(group_id, 1);
+	if (!ag) {
+		ath12k_warn(ab, "unable to create new hw group\n");
+		return NULL;
+	}
+
+	ath12k_dbg(ab, ATH12K_DBG_BOOT, "single device added to hardware group\n");
+
+	ab->device_id = ag->num_probed++;
+	ag->ab[ab->device_id] = ab;
+	ab->ag = ag;
+	ag->mlo_capable = false;
+
+	return ag;
+}
+
+void ath12k_core_hw_group_unassign(struct ath12k_base *ab)
+{
+	struct ath12k_hw_group *ag = ath12k_ab_to_ag(ab);
+	u8 device_id = ab->device_id;
+	int num_probed;
+
+	if (!ag)
+		return;
+
+	mutex_lock(&ag->mutex);
+
+	if (WARN_ON(device_id >= ag->num_devices)) {
+		mutex_unlock(&ag->mutex);
+		return;
+	}
+
+	if (WARN_ON(ag->ab[device_id] != ab)) {
+		mutex_unlock(&ag->mutex);
+		return;
+	}
+
+	ag->ab[device_id] = NULL;
+	ab->ag = NULL;
+	ab->device_id = ATH12K_INVALID_DEVICE_ID;
+
+	if (ag->num_probed)
+		ag->num_probed--;
+
+	num_probed = ag->num_probed;
+
+	mutex_unlock(&ag->mutex);
+
+	if (!num_probed)
+		ath12k_core_hw_group_free(ag);
+}
+
+static void ath12k_core_hw_group_destroy(struct ath12k_hw_group *ag)
+{
+	struct ath12k_base *ab;
+	int i;
+
+	if (WARN_ON(!ag))
+		return;
+
+	for (i = 0; i < ag->num_devices; i++) {
+		ab = ag->ab[i];
+		if (!ab)
+			continue;
+
+		ath12k_core_soc_destroy(ab);
+	}
+}
+
+static void ath12k_core_hw_group_cleanup(struct ath12k_hw_group *ag)
+{
+	struct ath12k_base *ab;
+	int i;
+
+	if (!ag)
+		return;
+
+	mutex_lock(&ag->mutex);
+
+	ath12k_core_hw_group_stop(ag);
+
+	for (i = 0; i < ag->num_devices; i++) {
+		ab = ag->ab[i];
+		if (!ab)
+			continue;
+
+		mutex_lock(&ab->core_lock);
+		ath12k_core_stop(ab);
+		mutex_unlock(&ab->core_lock);
+	}
+
+	mutex_unlock(&ag->mutex);
+}
+
+static int ath12k_core_hw_group_create(struct ath12k_hw_group *ag)
+{
+	struct ath12k_base *ab;
+	int i, ret;
+
+	lockdep_assert_held(&ag->mutex);
+
+	for (i = 0; i < ag->num_devices; i++) {
+		ab = ag->ab[i];
+		if (!ab)
+			continue;
+
+		mutex_lock(&ab->core_lock);
+
+		ret = ath12k_core_soc_create(ab);
+		if (ret) {
+			mutex_unlock(&ab->core_lock);
+			ath12k_err(ab, "failed to create soc core: %d\n", ret);
+			return ret;
+		}
+
+		mutex_unlock(&ab->core_lock);
+	}
+
+	return 0;
+}
+
+void ath12k_core_hw_group_set_mlo_capable(struct ath12k_hw_group *ag)
+{
+	lockdep_assert_held(&ag->mutex);
+
+	/* If more than one devices are grouped, then inter MLO
+	 * functionality can work still independent of whether internally
+	 * each device supports single_chip_mlo or not.
+	 * Only when there is one device, then it depends whether the
+	 * device can support intra chip MLO or not
+	 */
+	if (ag->num_devices > 1)
+		ag->mlo_capable = true;
+	else
+		ag->mlo_capable = ag->ab[0]->single_chip_mlo_supp;
+}
+
 int ath12k_core_init(struct ath12k_base *ab)
 {
+	struct ath12k_hw_group *ag;
 	int ret;
-
-	ret = ath12k_core_soc_create(ab);
-	if (ret) {
-		ath12k_err(ab, "failed to create soc core: %d\n", ret);
-		return ret;
-	}
 
 	ret = ath12k_core_panic_notifier_register(ab);
 	if (ret)
 		ath12k_warn(ab, "failed to register panic handler: %d\n", ret);
 
+	mutex_lock(&ath12k_hw_group_mutex);
+
+	ag = ath12k_core_hw_group_assign(ab);
+	if (!ag) {
+		mutex_unlock(&ath12k_hw_group_mutex);
+		ath12k_warn(ab, "unable to get hw group\n");
+		return -ENODEV;
+	}
+
+	mutex_unlock(&ath12k_hw_group_mutex);
+
+	mutex_lock(&ag->mutex);
+
+	ath12k_dbg(ab, ATH12K_DBG_BOOT, "num devices %d num probed %d\n",
+		   ag->num_devices, ag->num_probed);
+
+	if (ath12k_core_hw_group_create_ready(ag)) {
+		ret = ath12k_core_hw_group_create(ag);
+		if (ret) {
+			mutex_unlock(&ag->mutex);
+			ath12k_warn(ab, "unable to create hw group\n");
+			goto err;
+		}
+	}
+
+	mutex_unlock(&ag->mutex);
+
 	return 0;
+
+err:
+	ath12k_core_hw_group_destroy(ab->ag);
+	ath12k_core_hw_group_unassign(ab);
+	return ret;
 }
 
 void ath12k_core_deinit(struct ath12k_base *ab)
 {
 	ath12k_core_panic_notifier_unregister(ab);
-
-	mutex_lock(&ab->core_lock);
-
-	ath12k_hif_irq_disable(ab);
-	ath12k_core_pdev_destroy(ab);
-	ath12k_mac_unregister(ab);
-	ath12k_mac_destroy(ab);
-	ath12k_core_stop(ab);
-
-	mutex_unlock(&ab->core_lock);
-
-	ath12k_core_soc_destroy(ab);
+	ath12k_core_hw_group_cleanup(ab->ag);
+	ath12k_core_hw_group_destroy(ab->ag);
+	ath12k_core_hw_group_unassign(ab);
 }
 
 void ath12k_core_free(struct ath12k_base *ab)
@@ -1325,7 +1664,7 @@ struct ath12k_base *ath12k_core_alloc(struct device *dev, size_t priv_size,
 	ab->dev = dev;
 	ab->hif.bus = bus;
 	ab->qmi.num_radios = U8_MAX;
-	ab->mlo_capable_flags = ATH12K_INTRA_DEVICE_MLO_SUPPORT;
+	ab->single_chip_mlo_supp = false;
 
 	/* Device index used to identify the devices in a group.
 	 *
