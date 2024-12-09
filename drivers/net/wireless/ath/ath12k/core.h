@@ -136,7 +136,7 @@ struct ath12k_skb_rxcb {
 	struct hal_rx_desc *rx_desc;
 	u8 err_rel_src;
 	u8 err_code;
-	u8 mac_id;
+	u8 hw_link_id;
 	u8 unmapped;
 	u8 is_frag;
 	u8 tid;
@@ -219,6 +219,7 @@ enum ath12k_scan_state {
 
 enum ath12k_hw_group_flags {
 	ATH12K_GROUP_FLAG_REGISTERED,
+	ATH12K_GROUP_FLAG_UNREGISTER,
 };
 
 enum ath12k_dev_flags {
@@ -710,10 +711,12 @@ struct ath12k {
 	bool monitor_started;
 	int monitor_vdev_id;
 
-	u32 freq_low;
-	u32 freq_high;
+	struct wiphy_radio_freq_range freq_range;
 
 	bool nlo_enabled;
+
+	struct completion mlo_setup_done;
+	u32 mlo_setup_status;
 };
 
 struct ath12k_hw {
@@ -821,6 +824,17 @@ struct ath12k_soc_dp_stats {
 	struct ath12k_soc_dp_tx_err_stats tx_err;
 };
 
+struct ath12k_mlo_memory {
+	struct target_mem_chunk chunk[ATH12K_QMI_WLANFW_MAX_NUM_MEM_SEG_V01];
+	int mlo_mem_size;
+	bool init_done;
+};
+
+struct ath12k_hw_link {
+	u8 device_id;
+	u8 pdev_idx;
+};
+
 /* Holds info on the group of devices that are registered as a single
  * wiphy, protected with struct ath12k_hw_group::mutex.
  */
@@ -845,6 +859,14 @@ struct ath12k_hw_group {
 	struct ath12k_hw *ah[ATH12K_GROUP_MAX_RADIO];
 	u8 num_hw;
 	bool mlo_capable;
+	struct device_node *wsi_node[ATH12K_MAX_SOCS];
+	struct ath12k_mlo_memory mlo_mem;
+	struct ath12k_hw_link hw_links[ATH12K_GROUP_MAX_RADIO];
+};
+
+/* Holds WSI info specific to each device, excluding WSI group info */
+struct ath12k_wsi_info {
+	u32 index;
 };
 
 /* Master structure to hold the hw data which may be used in core module */
@@ -1028,6 +1050,7 @@ struct ath12k_base {
 	struct notifier_block panic_nb;
 
 	struct ath12k_hw_group *ag;
+	struct ath12k_wsi_info wsi_info;
 
 	/* must be last */
 	u8 drv_priv[] __aligned(sizeof(void *));
@@ -1203,6 +1226,12 @@ static inline void ath12k_core_stopped(struct ath12k_base *ab)
 	lockdep_assert_held(&ab->ag->mutex);
 
 	ab->ag->num_started--;
+}
+
+static inline struct ath12k_base *ath12k_ag_to_ab(struct ath12k_hw_group *ag,
+						  u8 device_id)
+{
+	return ag->ab[device_id];
 }
 
 #endif /* _CORE_H_ */
