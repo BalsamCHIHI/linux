@@ -1558,7 +1558,7 @@ static int ath12k_core_panic_notifier_register(struct ath12k_base *ab)
 					      &ab->panic_nb);
 }
 
-static void ath12k_core_panic_notifier_unregister(struct ath12k_base *ab)
+void ath12k_core_panic_notifier_unregister(struct ath12k_base *ab)
 {
 	atomic_notifier_chain_unregister(&panic_notifier_list,
 					 &ab->panic_nb);

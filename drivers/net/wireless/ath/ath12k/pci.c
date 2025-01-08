@@ -15,6 +15,7 @@
 #include "hif.h"
 #include "mhi.h"
 #include "debug.h"
+#include "debugfs.h"
 
 #define ATH12K_PCI_BAR_NUM		0
 #define ATH12K_PCI_DMA_MASK		32
@@ -1734,6 +1735,8 @@ static void ath12k_pci_remove(struct pci_dev *pdev)
 		ath12k_pci_power_down(ab, false);
 		ath12k_qmi_deinit_service(ab);
 		ath12k_core_hw_group_unassign(ab);
+		ath12k_core_panic_notifier_unregister(ab);
+		ath12k_debugfs_soc_destroy(ab);
 		goto qmi_fail;
 	}
 
