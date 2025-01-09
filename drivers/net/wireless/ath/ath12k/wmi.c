@@ -6122,6 +6122,8 @@ static int ath12k_reg_chan_list_event(struct ath12k_base *ab, struct sk_buff *sk
 		/* This regd would be applied during mac registration */
 		ab->default_regd[pdev_idx] = regd;
 	}
+
+	ab->regd_freed = false;
 	ab->dfs_region = reg_info->dfs_region;
 	spin_unlock(&ab->base_lock);
 
