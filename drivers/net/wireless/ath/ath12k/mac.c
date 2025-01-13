@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 /*
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <net/mac80211.h>
@@ -3138,6 +3138,37 @@ static int ath12k_setup_peer_smps(struct ath12k *ar, struct ath12k_link_vif *arv
 					 ath12k_smps_map[smps]);
 }
 
+static u32 ath12k_mac_ieee80211_sta_bw_to_wmi(struct ath12k *ar,
+					      struct ieee80211_link_sta *link_sta)
+{
+	u32 bw;
+
+	switch (link_sta->bandwidth) {
+	case IEEE80211_STA_RX_BW_20:
+		bw = WMI_PEER_CHWIDTH_20MHZ;
+		break;
+	case IEEE80211_STA_RX_BW_40:
+		bw = WMI_PEER_CHWIDTH_40MHZ;
+		break;
+	case IEEE80211_STA_RX_BW_80:
+		bw = WMI_PEER_CHWIDTH_80MHZ;
+		break;
+	case IEEE80211_STA_RX_BW_160:
+		bw = WMI_PEER_CHWIDTH_160MHZ;
+		break;
+	case IEEE80211_STA_RX_BW_320:
+		bw = WMI_PEER_CHWIDTH_320MHZ;
+		break;
+	default:
+		ath12k_warn(ar->ab, "Invalid bandwidth %d for link station %pM\n",
+			    link_sta->bandwidth, link_sta->addr);
+		bw = WMI_PEER_CHWIDTH_20MHZ;
+		break;
+	}
+
+	return bw;
+}
+
 static void ath12k_bss_assoc(struct ath12k *ar,
 			     struct ath12k_link_vif *arvif,
 			     struct ieee80211_bss_conf *bss_conf)
@@ -4657,7 +4688,23 @@ static int ath12k_mac_update_key_cache(struct ath12k_vif_cache *cache,
 				       struct ieee80211_sta *sta,
 				       struct ieee80211_key_conf *key)
 {
-	struct ath12k_key_conf *key_conf = NULL, *tmp;
+	struct ath12k_key_conf *key_conf, *tmp;
+
+	list_for_each_entry_safe(key_conf, tmp, &cache->key_conf.list, list) {
+		if (key_conf->key != key)
+			continue;
+
+		/* If SET key entry is already present in cache, nothing to do,
+		 * just return
+		 */
+		if (cmd == SET_KEY)
+			return 0;
+
+		/* DEL key for an old SET key which driver hasn't flushed yet.
+		 */
+		list_del(&key_conf->list);
+		kfree(key_conf);
+	}
 
 	if (cmd == SET_KEY) {
 		key_conf = kzalloc(sizeof(*key_conf), GFP_KERNEL);
@@ -4671,17 +4718,7 @@ static int ath12k_mac_update_key_cache(struct ath12k_vif_cache *cache,
 		list_add_tail(&key_conf->list,
 			      &cache->key_conf.list);
 	}
-	if (list_empty(&cache->key_conf.list))
-		return 0;
-	list_for_each_entry_safe(key_conf, tmp, &cache->key_conf.list, list) {
-		if (key_conf->key == key) {
-			/* DEL key for an old SET key which driver hasn't flushed yet.
-			 */
-			list_del(&key_conf->list);
-			kfree(key_conf);
-			break;
-		}
-	}
+
 	return 0;
 }
 
@@ -4902,6 +4939,11 @@ static int ath12k_mac_station_assoc(struct ath12k *ar,
 		ath12k_warn(ar->ab, "unable to access link sta in station assoc\n");
 		return -EINVAL;
 	}
+
+	spin_lock_bh(&ar->data_lock);
+	arsta->bw = ath12k_mac_ieee80211_sta_bw_to_wmi(ar, link_sta);
+	arsta->bw_prev = link_sta->bandwidth;
+	spin_unlock_bh(&ar->data_lock);
 
 	if (link_sta->vht_cap.vht_supported && num_vht_rates == 1) {
 		ret = ath12k_mac_set_peer_vht_fixed_rate(arvif, arsta, mask,
@@ -5409,37 +5451,6 @@ exit:
 	return ret;
 }
 
-static u32 ath12k_mac_ieee80211_sta_bw_to_wmi(struct ath12k *ar,
-					      struct ieee80211_sta *sta)
-{
-	u32 bw = WMI_PEER_CHWIDTH_20MHZ;
-
-	switch (sta->deflink.bandwidth) {
-	case IEEE80211_STA_RX_BW_20:
-		bw = WMI_PEER_CHWIDTH_20MHZ;
-		break;
-	case IEEE80211_STA_RX_BW_40:
-		bw = WMI_PEER_CHWIDTH_40MHZ;
-		break;
-	case IEEE80211_STA_RX_BW_80:
-		bw = WMI_PEER_CHWIDTH_80MHZ;
-		break;
-	case IEEE80211_STA_RX_BW_160:
-		bw = WMI_PEER_CHWIDTH_160MHZ;
-		break;
-	case IEEE80211_STA_RX_BW_320:
-		bw = WMI_PEER_CHWIDTH_320MHZ;
-		break;
-	default:
-		ath12k_warn(ar->ab, "Invalid bandwidth %d in rc update for %pM\n",
-			    sta->deflink.bandwidth, sta->addr);
-		bw = WMI_PEER_CHWIDTH_20MHZ;
-		break;
-	}
-
-	return bw;
-}
-
 static int ath12k_mac_assign_link_sta(struct ath12k_hw *ah,
 				      struct ath12k_sta *ahsta,
 				      struct ath12k_link_sta *arsta,
@@ -5523,7 +5534,6 @@ static int ath12k_mac_handle_link_sta_state(struct ieee80211_hw *hw,
 					    enum ieee80211_sta_state new_state)
 {
 	struct ieee80211_vif *vif = ath12k_ahvif_to_vif(arvif->ahvif);
-	struct ieee80211_sta *sta = ath12k_ahsta_to_sta(arsta->ahsta);
 	struct ath12k *ar = arvif->ar;
 	int ret = 0;
 
@@ -5565,13 +5575,6 @@ static int ath12k_mac_handle_link_sta_state(struct ieee80211_hw *hw,
 		if (ret)
 			ath12k_warn(ar->ab, "Failed to associate station: %pM\n",
 				    arsta->addr);
-
-		spin_lock_bh(&ar->data_lock);
-
-		arsta->bw = ath12k_mac_ieee80211_sta_bw_to_wmi(ar, sta);
-		arsta->bw_prev = sta->deflink.bandwidth;
-
-		spin_unlock_bh(&ar->data_lock);
 
 	/* IEEE80211_STA_ASSOC -> IEEE80211_STA_AUTHORIZED: set peer status as
 	 * authorized
@@ -5840,7 +5843,7 @@ static void ath12k_mac_op_link_sta_rc_update(struct ieee80211_hw *hw,
 	spin_lock_bh(&ar->data_lock);
 
 	if (changed & IEEE80211_RC_BW_CHANGED) {
-		bw = ath12k_mac_ieee80211_sta_bw_to_wmi(ar, sta);
+		bw = ath12k_mac_ieee80211_sta_bw_to_wmi(ar, link_sta);
 		arsta->bw_prev = arsta->bw;
 		arsta->bw = bw;
 	}
@@ -11243,8 +11246,8 @@ int ath12k_mac_register(struct ath12k_hw_group *ag)
 	int i;
 	int ret;
 
-	for (i = 0; i < ath12k_get_num_hw(ab); i++) {
-		ah = ath12k_ab_to_ah(ab, i);
+	for (i = 0; i < ag->num_hw; i++) {
+		ah = ath12k_ag_to_ah(ag, i);
 
 		ret = ath12k_mac_hw_register(ah);
 		if (ret)
@@ -11257,7 +11260,7 @@ int ath12k_mac_register(struct ath12k_hw_group *ag)
 
 err:
 	for (i = i - 1; i >= 0; i--) {
-		ah = ath12k_ab_to_ah(ab, i);
+		ah = ath12k_ag_to_ah(ag, i);
 		if (!ah)
 			continue;
 
@@ -11275,8 +11278,8 @@ void ath12k_mac_unregister(struct ath12k_hw_group *ag)
 
 	clear_bit(ATH12K_FLAG_REGISTERED, &ab->dev_flags);
 
-	for (i = ath12k_get_num_hw(ab) - 1; i >= 0; i--) {
-		ah = ath12k_ab_to_ah(ab, i);
+	for (i = ag->num_hw - 1; i >= 0; i--) {
+		ah = ath12k_ag_to_ah(ag, i);
 		if (!ah)
 			continue;
 
@@ -11356,13 +11359,13 @@ void ath12k_mac_destroy(struct ath12k_hw_group *ag)
 		}
 	}
 
-	for (i = 0; i < ath12k_get_num_hw(ab); i++) {
-		ah = ath12k_ab_to_ah(ab, i);
+	for (i = 0; i < ag->num_hw; i++) {
+		ah = ath12k_ag_to_ah(ag, i);
 		if (!ah)
 			continue;
 
 		ath12k_mac_hw_destroy(ah);
-		ath12k_ab_set_ah(ab, i, NULL);
+		ath12k_ag_set_ah(ag, i, NULL);
 	}
 }
 
@@ -11383,8 +11386,20 @@ int ath12k_mac_allocate(struct ath12k_hw_group *ag)
 	u8 radio_per_hw;
 
 	total_radio = 0;
-	for (i = 0; i < ag->num_devices; i++)
-		total_radio += ag->ab[i]->num_radios;
+	for (i = 0; i < ag->num_devices; i++) {
+		ab = ag->ab[i];
+		if (!ab)
+			continue;
+
+		ath12k_mac_set_device_defaults(ab);
+		total_radio += ab->num_radios;
+	}
+
+	if (!total_radio)
+		return -EINVAL;
+
+	if (WARN_ON(total_radio > ATH12K_GROUP_MAX_RADIO))
+		return -ENOSPC;
 
 	/* All pdev get combined and register as single wiphy based on
 	 * hardware group which participate in multi-link operation else
@@ -11397,14 +11412,16 @@ int ath12k_mac_allocate(struct ath12k_hw_group *ag)
 
 	num_hw = total_radio / radio_per_hw;
 
-	if (WARN_ON(num_hw >= ATH12K_GROUP_MAX_RADIO))
-		return -ENOSPC;
-
 	ag->num_hw = 0;
 	device_id = 0;
 	mac_id = 0;
 	for (i = 0; i < num_hw; i++) {
 		for (j = 0; j < radio_per_hw; j++) {
+			if (device_id >= ag->num_devices || !ag->ab[device_id]) {
+				ret = -ENOSPC;
+				goto err;
+			}
+
 			ab = ag->ab[device_id];
 			pdev_map[j].ab = ab;
 			pdev_map[j].pdev_idx = mac_id;
@@ -11416,9 +11433,10 @@ int ath12k_mac_allocate(struct ath12k_hw_group *ag)
 			if (mac_id >= ab->num_radios) {
 				mac_id = 0;
 				device_id++;
-				ath12k_mac_set_device_defaults(ab);
 			}
 		}
+
+		ab = pdev_map->ab;
 
 		ah = ath12k_mac_hw_allocate(ag, pdev_map, radio_per_hw);
 		if (!ah) {
@@ -11438,12 +11456,12 @@ int ath12k_mac_allocate(struct ath12k_hw_group *ag)
 
 err:
 	for (i = i - 1; i >= 0; i--) {
-		ah = ath12k_ab_to_ah(ab, i);
+		ah = ath12k_ag_to_ah(ag, i);
 		if (!ah)
 			continue;
 
 		ath12k_mac_hw_destroy(ah);
-		ath12k_ab_set_ah(ab, i, NULL);
+		ath12k_ag_set_ah(ag, i, NULL);
 	}
 
 	return ret;
