@@ -87,6 +87,7 @@ enum wme_ac {
 #define ATH12K_HT_MCS_MAX	7
 #define ATH12K_VHT_MCS_MAX	9
 #define ATH12K_HE_MCS_MAX	11
+#define ATH12K_EHT_MCS_MAX	15
 
 enum ath12k_crypt_mode {
 	/* Only use hardware crypto engine */
@@ -328,6 +329,7 @@ struct ath12k_vif {
 	u32 key_cipher;
 	u8 tx_encap_type;
 	bool ps;
+	atomic_t mcbc_gsn;
 
 	struct ath12k_link_vif deflink;
 	struct ath12k_link_vif __rcu *link[ATH12K_NUM_MAX_LINKS];
@@ -501,6 +503,8 @@ struct ath12k_link_sta {
 	struct ath12k_rx_peer_stats *rx_stats;
 	struct ath12k_wbm_tx_stats *wbm_tx_stats;
 	u32 bw_prev;
+	u32 peer_nss;
+	s8 rssi_beacon;
 
 	/* For now the assoc link will be considered primary */
 	bool is_assoc_link;
@@ -719,6 +723,8 @@ struct ath12k {
 	struct wiphy_radio_freq_range freq_range;
 
 	bool nlo_enabled;
+
+	struct completion fw_stats_complete;
 
 	struct completion mlo_setup_done;
 	u32 mlo_setup_status;
