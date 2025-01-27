@@ -2600,7 +2600,7 @@ static bool ath12k_dp_rx_check_nwifi_hdr_len_valid(struct ath12k_base *ab,
 	if ((likely(hdr_len <= DP_MAX_NWIFI_HDR_LEN)))
 		return true;
 
-	ab->soc_stats.invalid_rbm++;
+	ab->device_stats.invalid_rbm++;
 	WARN_ON_ONCE(1);
 	return false;
 }
@@ -2763,9 +2763,9 @@ int ath12k_dp_rx_process(struct ath12k_base *ab, int ring_id,
 			 struct napi_struct *napi, int budget)
 {
 	struct ath12k_hw_group *ag = ab->ag;
-	struct list_head rx_desc_used_list[ATH12K_MAX_SOCS];
+	struct list_head rx_desc_used_list[ATH12K_MAX_DEVICES];
 	struct ath12k_hw_link *hw_links = ag->hw_links;
-	int num_buffs_reaped[ATH12K_MAX_SOCS] = {};
+	int num_buffs_reaped[ATH12K_MAX_DEVICES] = {};
 	struct ath12k_rx_desc_info *desc_info;
 	struct ath12k_dp *dp = &ab->dp;
 	struct dp_rxdma_ring *rx_ring = &dp->rx_refill_buf_ring;
@@ -2782,7 +2782,7 @@ int ath12k_dp_rx_process(struct ath12k_base *ab, int ring_id,
 
 	__skb_queue_head_init(&msdu_list);
 
-	for (device_id = 0; device_id < ATH12K_MAX_SOCS; device_id++)
+	for (device_id = 0; device_id < ATH12K_MAX_DEVICES; device_id++)
 		INIT_LIST_HEAD(&rx_desc_used_list[device_id]);
 
 	srng = &ab->hal.srng_list[dp->reo_dst_ring[ring_id].ring_id];
@@ -2849,7 +2849,7 @@ try_again:
 		if (push_reason !=
 		    HAL_REO_DEST_RING_PUSH_REASON_ROUTING_INSTRUCTION) {
 			dev_kfree_skb_any(msdu);
-			ab->soc_stats.hal_reo_error[ring_id]++;
+			ab->device_stats.hal_reo_error[ring_id]++;
 			continue;
 		}
 
@@ -2899,7 +2899,7 @@ try_again:
 	if (!total_msdu_reaped)
 		goto exit;
 
-	for (device_id = 0; device_id < ATH12K_MAX_SOCS; device_id++) {
+	for (device_id = 0; device_id < ATH12K_MAX_DEVICES; device_id++) {
 		if (!num_buffs_reaped[device_id])
 			continue;
 
@@ -3609,9 +3609,9 @@ int ath12k_dp_rx_process_err(struct ath12k_base *ab, struct napi_struct *napi,
 			     int budget)
 {
 	struct ath12k_hw_group *ag = ab->ag;
-	struct list_head rx_desc_used_list[ATH12K_MAX_SOCS];
+	struct list_head rx_desc_used_list[ATH12K_MAX_DEVICES];
 	u32 msdu_cookies[HAL_NUM_RX_MSDUS_PER_LINK_DESC];
-	int num_buffs_reaped[ATH12K_MAX_SOCS] = {};
+	int num_buffs_reaped[ATH12K_MAX_DEVICES] = {};
 	struct dp_link_desc_bank *link_desc_banks;
 	enum hal_rx_buf_return_buf_manager rbm;
 	struct hal_rx_msdu_link *link_desc_va;
@@ -3633,7 +3633,7 @@ int ath12k_dp_rx_process_err(struct ath12k_base *ab, struct napi_struct *napi,
 	tot_n_bufs_reaped = 0;
 	quota = budget;
 
-	for (device_id = 0; device_id < ATH12K_MAX_SOCS; device_id++)
+	for (device_id = 0; device_id < ATH12K_MAX_DEVICES; device_id++)
 		INIT_LIST_HEAD(&rx_desc_used_list[device_id]);
 
 	reo_except = &ab->dp.reo_except_ring;
@@ -3647,7 +3647,7 @@ int ath12k_dp_rx_process_err(struct ath12k_base *ab, struct napi_struct *napi,
 	while (budget &&
 	       (reo_desc = ath12k_hal_srng_dst_get_next_entry(ab, srng))) {
 		drop = false;
-		ab->soc_stats.err_ring_pkts++;
+		ab->device_stats.err_ring_pkts++;
 
 		ret = ath12k_hal_desc_reo_parse_err(ab, reo_desc, &paddr,
 						    &desc_bank);
@@ -3674,7 +3674,7 @@ int ath12k_dp_rx_process_err(struct ath12k_base *ab, struct napi_struct *napi,
 		if (rbm != partner_ab->dp.idle_link_rbm &&
 		    rbm != HAL_RX_BUF_RBM_SW3_BM &&
 		    rbm != partner_ab->hw_params->hal_params->rx_buf_rbm) {
-			ab->soc_stats.invalid_rbm++;
+			ab->device_stats.invalid_rbm++;
 			ath12k_warn(ab, "invalid return buffer manager %d\n", rbm);
 			ath12k_dp_rx_link_desc_return(partner_ab, reo_desc,
 						      HAL_WBM_REL_BM_ACT_REL_MSDU);
@@ -3721,7 +3721,7 @@ exit:
 
 	spin_unlock_bh(&srng->lock);
 
-	for (device_id = 0; device_id < ATH12K_MAX_SOCS; device_id++) {
+	for (device_id = 0; device_id < ATH12K_MAX_DEVICES; device_id++) {
 		if (!num_buffs_reaped[device_id])
 			continue;
 
@@ -3840,7 +3840,7 @@ static bool ath12k_dp_rx_h_reo_err(struct ath12k *ar, struct sk_buff *msdu,
 	struct ath12k_skb_rxcb *rxcb = ATH12K_SKB_RXCB(msdu);
 	bool drop = false;
 
-	ar->ab->soc_stats.reo_error[rxcb->err_code]++;
+	ar->ab->device_stats.reo_error[rxcb->err_code]++;
 
 	switch (rxcb->err_code) {
 	case HAL_REO_DEST_RING_ERROR_CODE_DESC_ADDR_ZERO:
@@ -3912,7 +3912,7 @@ static bool ath12k_dp_rx_h_rxdma_err(struct ath12k *ar,  struct sk_buff *msdu,
 	bool drop = false;
 	u32 err_bitmap;
 
-	ar->ab->soc_stats.rxdma_error[rxcb->err_code]++;
+	ar->ab->device_stats.rxdma_error[rxcb->err_code]++;
 
 	switch (rxcb->err_code) {
 	case HAL_REO_ENTR_RING_RXDMA_ECODE_DECRYPT_ERR:
@@ -3971,7 +3971,7 @@ static void ath12k_dp_rx_wbm_err(struct ath12k *ar,
 int ath12k_dp_rx_process_wbm_err(struct ath12k_base *ab,
 				 struct napi_struct *napi, int budget)
 {
-	struct list_head rx_desc_used_list[ATH12K_MAX_SOCS];
+	struct list_head rx_desc_used_list[ATH12K_MAX_DEVICES];
 	struct ath12k_hw_group *ag = ab->ag;
 	struct ath12k *ar;
 	struct ath12k_dp *dp = &ab->dp;
@@ -3982,7 +3982,7 @@ int ath12k_dp_rx_process_wbm_err(struct ath12k_base *ab,
 	struct sk_buff_head msdu_list, scatter_msdu_list;
 	struct ath12k_skb_rxcb *rxcb;
 	void *rx_desc;
-	int num_buffs_reaped[ATH12K_MAX_SOCS] = {};
+	int num_buffs_reaped[ATH12K_MAX_DEVICES] = {};
 	int total_num_buffs_reaped = 0;
 	struct ath12k_rx_desc_info *desc_info;
 	struct ath12k_hw_link *hw_links = ag->hw_links;
@@ -3994,7 +3994,7 @@ int ath12k_dp_rx_process_wbm_err(struct ath12k_base *ab,
 	__skb_queue_head_init(&msdu_list);
 	__skb_queue_head_init(&scatter_msdu_list);
 
-	for (device_id = 0; device_id < ATH12K_MAX_SOCS; device_id++)
+	for (device_id = 0; device_id < ATH12K_MAX_DEVICES; device_id++)
 		INIT_LIST_HEAD(&rx_desc_used_list[device_id]);
 
 	srng = &ab->hal.srng_list[dp->rx_rel_ring.ring_id];
@@ -4118,7 +4118,7 @@ int ath12k_dp_rx_process_wbm_err(struct ath12k_base *ab,
 	if (!total_num_buffs_reaped)
 		goto done;
 
-	for (device_id = 0; device_id < ATH12K_MAX_SOCS; device_id++) {
+	for (device_id = 0; device_id < ATH12K_MAX_DEVICES; device_id++) {
 		if (!num_buffs_reaped[device_id])
 			continue;
 
