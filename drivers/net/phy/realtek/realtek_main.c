@@ -971,15 +971,15 @@ static int rtl822x_read_status(struct phy_device *phydev)
 {
 	int lpadv, ret;
 
+	mii_10gbt_stat_mod_linkmode_lpa_t(phydev->lp_advertising, 0);
+
 	ret = rtlgen_read_status(phydev);
 	if (ret < 0)
 		return ret;
 
 	if (phydev->autoneg == AUTONEG_DISABLE ||
-	    !phydev->autoneg_complete) {
-		mii_10gbt_stat_mod_linkmode_lpa_t(phydev->lp_advertising, 0);
+	    !phydev->autoneg_complete)
 		return 0;
-	}
 
 	lpadv = phy_read_paged(phydev, 0xa5d, 0x13);
 	if (lpadv < 0)
@@ -1042,26 +1042,25 @@ static int rtl822x_c45_read_status(struct phy_device *phydev)
 {
 	int ret, val;
 
-	ret = genphy_c45_read_status(phydev);
-	if (ret < 0)
-		return ret;
-
-	if (phydev->autoneg == AUTONEG_DISABLE ||
-	    !genphy_c45_aneg_done(phydev))
-		mii_stat1000_mod_linkmode_lpa_t(phydev->lp_advertising, 0);
-
 	/* Vendor register as C45 has no standardized support for 1000BaseT */
-	if (phydev->autoneg == AUTONEG_ENABLE) {
+	if (phydev->autoneg == AUTONEG_ENABLE && genphy_c45_aneg_done(phydev)) {
 		val = phy_read_mmd(phydev, MDIO_MMD_VEND2,
 				   RTL822X_VND2_GANLPAR);
 		if (val < 0)
 			return val;
-
-		mii_stat1000_mod_linkmode_lpa_t(phydev->lp_advertising, val);
+	} else {
+		val = 0;
 	}
+	mii_stat1000_mod_linkmode_lpa_t(phydev->lp_advertising, val);
 
-	if (!phydev->link)
+	ret = genphy_c45_read_status(phydev);
+	if (ret < 0)
+		return ret;
+
+	if (!phydev->link) {
+		phydev->master_slave_state = MASTER_SLAVE_STATE_UNKNOWN;
 		return 0;
+	}
 
 	/* Read actual speed from vendor register. */
 	val = phy_read_mmd(phydev, MDIO_MMD_VEND2, RTL_VND2_PHYSR);
@@ -1475,6 +1474,7 @@ static struct phy_driver realtek_drvs[] = {
 	}, {
 		.match_phy_device = rtl8221b_vb_cg_c22_match_phy_device,
 		.name           = "RTL8221B-VB-CG 2.5Gbps PHY (C22)",
+		.probe		= rtl822x_probe,
 		.get_features   = rtl822x_get_features,
 		.config_aneg    = rtl822x_config_aneg,
 		.config_init    = rtl822xb_config_init,
@@ -1487,6 +1487,7 @@ static struct phy_driver realtek_drvs[] = {
 	}, {
 		.match_phy_device = rtl8221b_vb_cg_c45_match_phy_device,
 		.name           = "RTL8221B-VB-CG 2.5Gbps PHY (C45)",
+		.probe		= rtl822x_probe,
 		.config_init    = rtl822xb_config_init,
 		.get_rate_matching = rtl822xb_get_rate_matching,
 		.get_features   = rtl822x_c45_get_features,
@@ -1497,6 +1498,7 @@ static struct phy_driver realtek_drvs[] = {
 	}, {
 		.match_phy_device = rtl8221b_vn_cg_c22_match_phy_device,
 		.name           = "RTL8221B-VM-CG 2.5Gbps PHY (C22)",
+		.probe		= rtl822x_probe,
 		.get_features   = rtl822x_get_features,
 		.config_aneg    = rtl822x_config_aneg,
 		.config_init    = rtl822xb_config_init,
@@ -1509,6 +1511,7 @@ static struct phy_driver realtek_drvs[] = {
 	}, {
 		.match_phy_device = rtl8221b_vn_cg_c45_match_phy_device,
 		.name           = "RTL8221B-VN-CG 2.5Gbps PHY (C45)",
+		.probe		= rtl822x_probe,
 		.config_init    = rtl822xb_config_init,
 		.get_rate_matching = rtl822xb_get_rate_matching,
 		.get_features   = rtl822x_c45_get_features,
@@ -1519,6 +1522,7 @@ static struct phy_driver realtek_drvs[] = {
 	}, {
 		.match_phy_device = rtl8251b_c45_match_phy_device,
 		.name           = "RTL8251B 5Gbps PHY",
+		.probe		= rtl822x_probe,
 		.get_features   = rtl822x_get_features,
 		.config_aneg    = rtl822x_config_aneg,
 		.read_status    = rtl822x_read_status,
