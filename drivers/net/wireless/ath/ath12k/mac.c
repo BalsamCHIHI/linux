@@ -20,6 +20,7 @@
 #include "debugfs.h"
 #include "hif.h"
 #include "wow.h"
+#include "debugfs_sta.h"
 
 #define CHAN2G(_channel, _freq, _flags) { \
 	.band                   = NL80211_BAND_2GHZ, \
@@ -805,9 +806,9 @@ static struct ath12k *ath12k_get_ar_by_ctx(struct ieee80211_hw *hw,
 	return ath12k_mac_get_ar_by_chan(hw, ctx->def.chan);
 }
 
-static struct ath12k *ath12k_get_ar_by_vif(struct ieee80211_hw *hw,
-					   struct ieee80211_vif *vif,
-					   u8 link_id)
+struct ath12k *ath12k_get_ar_by_vif(struct ieee80211_hw *hw,
+				    struct ieee80211_vif *vif,
+				    u8 link_id)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
@@ -5519,6 +5520,7 @@ static int ath12k_mac_station_add(struct ath12k *ar,
 		}
 	}
 
+	ewma_avg_rssi_init(&arsta->avg_rssi);
 	return 0;
 
 free_peer:
@@ -7343,10 +7345,14 @@ static int ath12k_mac_config_mon_status_default(struct ath12k *ar, bool enable)
 	if (!ab->hw_params->rxdma1_enable)
 		return ret;
 
-	if (enable)
+	if (enable) {
 		tlv_filter = ath12k_mac_mon_status_filter_default;
-	else
+
+		if (ath12k_debugfs_rx_filter(ar))
+			tlv_filter.rx_filter = ath12k_debugfs_rx_filter(ar);
+	} else {
 		tlv_filter.rxmon_disable = true;
+	}
 
 	for (i = 0; i < ab->hw_params->num_rxdma_per_pdev; i++) {
 		ring_id = ar->dp.rxdma_mon_dst_ring[i].ring_id;
@@ -10197,6 +10203,13 @@ static void ath12k_mac_op_sta_statistics(struct ieee80211_hw *hw,
 		sinfo->signal = db2dbm ? signal : signal + ATH12K_DEFAULT_NOISE_FLOOR;
 		sinfo->filled |= BIT_ULL(NL80211_STA_INFO_SIGNAL);
 	}
+
+	sinfo->signal_avg = ewma_avg_rssi_read(&arsta->avg_rssi);
+
+	if (!db2dbm)
+		sinfo->signal_avg += ATH12K_DEFAULT_NOISE_FLOOR;
+
+	sinfo->filled |= BIT_ULL(NL80211_STA_INFO_SIGNAL_AVG);
 }
 
 static int ath12k_mac_op_cancel_remain_on_channel(struct ieee80211_hw *hw,
@@ -10443,6 +10456,9 @@ static const struct ieee80211_ops ath12k_ops = {
 	.set_wakeup			= ath12k_wow_op_set_wakeup,
 #endif
 	CFG80211_TESTMODE_CMD(ath12k_tm_cmd)
+#ifdef CONFIG_ATH12K_DEBUGFS
+	.link_sta_add_debugfs           = ath12k_debugfs_link_sta_op_add,
+#endif
 };
 
 static void ath12k_mac_update_ch_list(struct ath12k *ar,
