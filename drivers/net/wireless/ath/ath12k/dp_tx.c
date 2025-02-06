@@ -494,6 +494,8 @@ map:
 		arvif->link_stats.tx_enqueued++;
 	spin_unlock_bh(&arvif->link_stats_lock);
 
+	ab->device_stats.tx_enqueued[ti.ring_id]++;
+
 	ath12k_hal_tx_cmd_desc_setup(ab, hal_tcl_desc, &ti);
 
 	ath12k_hal_srng_access_end(ab, tcl_ring);
@@ -578,6 +580,7 @@ ath12k_dp_tx_htt_tx_complete_buf(struct ath12k_base *ab,
 	info = IEEE80211_SKB_CB(msdu);
 
 	ar = skb_cb->ar;
+	ab->device_stats.tx_completed[tx_ring->tcl_data_ring_id]++;
 
 	if (atomic_dec_and_test(&ar->dp.num_tx_pending))
 		wake_up(&ar->dp.tx_empty_waitq);
@@ -649,6 +652,7 @@ ath12k_dp_tx_process_htt_tx_complete(struct ath12k_base *ab,
 
 	wbm_status = le32_get_bits(status_desc->info0,
 				   HTT_TX_WBM_COMP_INFO0_STATUS);
+	ab->device_stats.fw_tx_status[wbm_status]++;
 
 	switch (wbm_status) {
 	case HAL_WBM_REL_HTT_TX_COMP_STATUS_OK:
@@ -800,7 +804,8 @@ static void ath12k_dp_tx_update_txcompl(struct ath12k *ar, struct hal_tx_status 
 static void ath12k_dp_tx_complete_msdu(struct ath12k *ar,
 				       struct sk_buff *msdu,
 				       struct hal_tx_status *ts,
-				       struct sk_buff *skb_ext_desc)
+				       struct sk_buff *skb_ext_desc,
+				       int ring)
 {
 	struct ieee80211_tx_status status = { 0 };
 	struct ath12k_base *ab = ar->ab;
@@ -818,6 +823,7 @@ static void ath12k_dp_tx_complete_msdu(struct ath12k *ar,
 	}
 
 	skb_cb = ATH12K_SKB_CB(msdu);
+	ab->device_stats.tx_completed[ring]++;
 
 	dma_unmap_single(ab->dev, skb_cb->paddr, msdu->len, DMA_TO_DEVICE);
 	if (skb_cb->paddr_ext_desc) {
@@ -963,6 +969,8 @@ void ath12k_dp_tx_completion_handler(struct ath12k_base *ab, int ring_id)
 	struct hal_wbm_release_ring *desc;
 	u8 mac_id, pdev_id;
 	u64 desc_va;
+	enum hal_wbm_rel_src_module buf_rel_source;
+	enum hal_wbm_tqm_rel_reason rel_status;
 
 	spin_lock_bh(&status_ring->lock);
 
@@ -1019,6 +1027,15 @@ void ath12k_dp_tx_completion_handler(struct ath12k_base *ab, int ring_id)
 		mac_id = tx_desc->mac_id;
 		skb_ext_desc = tx_desc->skb_ext_desc;
 
+		/* Find the HAL_WBM_RELEASE_INFO0_REL_SRC_MODULE value */
+		buf_rel_source = le32_get_bits(tx_status->info0,
+					       HAL_WBM_RELEASE_INFO0_REL_SRC_MODULE);
+		ab->device_stats.tx_wbm_rel_source[buf_rel_source]++;
+
+		rel_status = le32_get_bits(tx_status->info0,
+					   HAL_WBM_COMPL_TX_INFO0_TQM_RELEASE_REASON);
+		ab->device_stats.tqm_rel_reason[rel_status]++;
+
 		/* Release descriptor as soon as extracting necessary info
 		 * to reduce contention
 		 */
@@ -1037,7 +1054,8 @@ void ath12k_dp_tx_completion_handler(struct ath12k_base *ab, int ring_id)
 		if (atomic_dec_and_test(&ar->dp.num_tx_pending))
 			wake_up(&ar->dp.tx_empty_waitq);
 
-		ath12k_dp_tx_complete_msdu(ar, msdu, &ts, skb_ext_desc);
+		ath12k_dp_tx_complete_msdu(ar, msdu, &ts, skb_ext_desc,
+					   tx_ring->tcl_data_ring_id);
 	}
 }
 
