@@ -110,6 +110,10 @@ enum ath12k_debug_tpc_stats_support_modes {
 	ATH12K_TPC_STATS_SUPPORT_BE_PUNC,
 };
 #else
+static inline void ath12k_debugfs_pdev_create(struct ath12k_base *ab)
+{
+}
+
 static inline void ath12k_debugfs_soc_create(struct ath12k_base *ab)
 {
 }
@@ -143,10 +147,6 @@ static inline int ath12k_debugfs_rx_filter(struct ath12k *ar)
 
 static inline void ath12k_debugfs_op_vif_add(struct ieee80211_hw *hw,
 					     struct ieee80211_vif *vif)
-{
-}
-
-static inline void ath12k_debugfs_pdev_create(struct ath12k_base *ab)
 {
 }
 #endif /* CONFIG_ATH12K_DEBUGFS */
