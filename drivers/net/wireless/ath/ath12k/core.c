@@ -897,9 +897,40 @@ static void ath12k_core_hw_group_stop(struct ath12k_hw_group *ag)
 	ath12k_mac_destroy(ag);
 }
 
+u8 ath12k_get_num_partner_link(struct ath12k *ar)
+{
+	struct ath12k_base *partner_ab, *ab = ar->ab;
+	struct ath12k_hw_group *ag = ab->ag;
+	struct ath12k_pdev *pdev;
+	u8 num_link = 0;
+	int i, j;
+
+	lockdep_assert_held(&ag->mutex);
+
+	for (i = 0; i < ag->num_devices; i++) {
+		partner_ab = ag->ab[i];
+
+		for (j = 0; j < partner_ab->num_radios; j++) {
+			pdev = &partner_ab->pdevs[j];
+
+			/* Avoid the self link */
+			if (ar == pdev->ar)
+				continue;
+
+			num_link++;
+		}
+	}
+
+	return num_link;
+}
+
 static int __ath12k_mac_mlo_ready(struct ath12k *ar)
 {
+	u8 num_link = ath12k_get_num_partner_link(ar);
 	int ret;
+
+	if (num_link == 0)
+		return 0;
 
 	ret = ath12k_wmi_mlo_ready(ar);
 	if (ret) {
@@ -942,7 +973,7 @@ static int ath12k_core_mlo_setup(struct ath12k_hw_group *ag)
 {
 	int ret, i;
 
-	if (!ag->mlo_capable || ag->num_devices == 1)
+	if (!ag->mlo_capable)
 		return 0;
 
 	ret = ath12k_mac_mlo_setup(ag);
@@ -1132,16 +1163,18 @@ err_core_stop:
 		ath12k_core_stop(ab);
 		mutex_unlock(&ab->core_lock);
 	}
+	mutex_unlock(&ag->mutex);
 	goto exit;
 
 err_dp_free:
 	ath12k_dp_free(ab);
 	mutex_unlock(&ab->core_lock);
+	mutex_unlock(&ag->mutex);
+
 err_firmware_stop:
 	ath12k_qmi_firmware_stop(ab);
 
 exit:
-	mutex_unlock(&ag->mutex);
 	return ret;
 }
 
@@ -1814,14 +1847,11 @@ void ath12k_core_hw_group_set_mlo_capable(struct ath12k_hw_group *ag)
 	/* If more than one devices are grouped, then inter MLO
 	 * functionality can work still independent of whether internally
 	 * each device supports single_chip_mlo or not.
-	 * Only when there is one device, then it depends whether the
-	 * device can support intra chip MLO or not
+	 * Only when there is one device, then disable for WCN chipsets
+	 * till the required driver implementation is in place.
 	 */
-	if (ag->num_devices > 1) {
-		ag->mlo_capable = true;
-	} else {
+	if (ag->num_devices == 1) {
 		ab = ag->ab[0];
-		ag->mlo_capable = ab->single_chip_mlo_supp;
 
 		/* WCN chipsets does not advertise in firmware features
 		 * hence skip checking
@@ -1830,8 +1860,7 @@ void ath12k_core_hw_group_set_mlo_capable(struct ath12k_hw_group *ag)
 			return;
 	}
 
-	if (!ag->mlo_capable)
-		return;
+	ag->mlo_capable = true;
 
 	for (i = 0; i < ag->num_devices; i++) {
 		ab = ag->ab[i];
@@ -1947,7 +1976,6 @@ struct ath12k_base *ath12k_core_alloc(struct device *dev, size_t priv_size,
 	ab->dev = dev;
 	ab->hif.bus = bus;
 	ab->qmi.num_radios = U8_MAX;
-	ab->single_chip_mlo_supp = false;
 
 	/* Device index used to identify the devices in a group.
 	 *

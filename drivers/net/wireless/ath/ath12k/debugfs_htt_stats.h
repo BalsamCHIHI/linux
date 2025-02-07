@@ -123,33 +123,38 @@ struct ath12k_htt_extd_stats_msg {
 
 /* htt_dbg_ext_stats_type */
 enum ath12k_dbg_htt_ext_stats_type {
-	ATH12K_DBG_HTT_EXT_STATS_RESET			= 0,
-	ATH12K_DBG_HTT_EXT_STATS_PDEV_TX		= 1,
-	ATH12K_DBG_HTT_EXT_STATS_PDEV_TX_SCHED		= 4,
-	ATH12K_DBG_HTT_EXT_STATS_PDEV_ERROR		= 5,
-	ATH12K_DBG_HTT_EXT_STATS_PDEV_TQM		= 6,
-	ATH12K_DBG_HTT_EXT_STATS_TX_DE_INFO		= 8,
-	ATH12K_DBG_HTT_EXT_STATS_PDEV_TX_RATE		= 9,
-	ATH12K_DBG_HTT_EXT_STATS_PDEV_RX_RATE		= 10,
-	ATH12K_DBG_HTT_EXT_STATS_TX_SELFGEN_INFO	= 12,
-	ATH12K_DBG_HTT_EXT_STATS_SRNG_INFO		= 15,
-	ATH12K_DBG_HTT_EXT_STATS_SFM_INFO		= 16,
-	ATH12K_DBG_HTT_EXT_STATS_PDEV_TX_MU		= 17,
-	ATH12K_DBG_HTT_EXT_STATS_PDEV_CCA_STATS		= 19,
-	ATH12K_DBG_HTT_EXT_STATS_PDEV_OBSS_PD_STATS	= 23,
-	ATH12K_DBG_HTT_EXT_STATS_PDEV_RX_RATE_EXT	= 30,
-	ATH12K_DBG_HTT_EXT_STATS_PDEV_TX_RATE_TXBF	= 31,
-	ATH12K_DBG_HTT_EXT_STATS_TXBF_OFDMA		= 32,
-	ATH12K_DBG_HTT_EXT_STATS_DLPAGER_STATS		= 36,
-	ATH12K_DBG_HTT_EXT_PHY_COUNTERS_AND_PHY_STATS	= 37,
-	ATH12K_DBG_HTT_EXT_VDEVS_TXRX_STATS		= 38,
-	ATH12K_DBG_HTT_EXT_PDEV_PER_STATS		= 40,
-	ATH12K_DBG_HTT_EXT_AST_ENTRIES			= 41,
-	ATH12K_DBG_HTT_EXT_STATS_SOC_ERROR		= 45,
-	ATH12K_DBG_HTT_DBG_PDEV_PUNCTURE_STATS		= 46,
-	ATH12K_DBG_HTT_EXT_STATS_PDEV_SCHED_ALGO	= 49,
-	ATH12K_DBG_HTT_EXT_STATS_MANDATORY_MUOFDMA	= 51,
-	ATH12K_DGB_HTT_EXT_STATS_PDEV_MBSSID_CTRL_FRAME	= 54,
+	ATH12K_DBG_HTT_EXT_STATS_RESET				= 0,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_TX			= 1,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_TX_SCHED			= 4,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_ERROR			= 5,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_TQM			= 6,
+	ATH12K_DBG_HTT_EXT_STATS_TX_DE_INFO			= 8,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_TX_RATE			= 9,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_RX_RATE			= 10,
+	ATH12K_DBG_HTT_EXT_STATS_TX_SELFGEN_INFO		= 12,
+	ATH12K_DBG_HTT_EXT_STATS_SRNG_INFO			= 15,
+	ATH12K_DBG_HTT_EXT_STATS_SFM_INFO			= 16,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_TX_MU			= 17,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_CCA_STATS			= 19,
+	ATH12K_DBG_HTT_EXT_STATS_TX_SOUNDING_INFO		= 22,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_OBSS_PD_STATS		= 23,
+	ATH12K_DBG_HTT_EXT_STATS_LATENCY_PROF_STATS		= 25,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_UL_TRIG_STATS		= 26,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_UL_MUMIMO_TRIG_STATS	= 27,
+	ATH12K_DBG_HTT_EXT_STATS_FSE_RX				= 28,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_RX_RATE_EXT		= 30,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_TX_RATE_TXBF		= 31,
+	ATH12K_DBG_HTT_EXT_STATS_TXBF_OFDMA			= 32,
+	ATH12K_DBG_HTT_EXT_STATS_DLPAGER_STATS			= 36,
+	ATH12K_DBG_HTT_EXT_PHY_COUNTERS_AND_PHY_STATS		= 37,
+	ATH12K_DBG_HTT_EXT_VDEVS_TXRX_STATS			= 38,
+	ATH12K_DBG_HTT_EXT_PDEV_PER_STATS			= 40,
+	ATH12K_DBG_HTT_EXT_AST_ENTRIES				= 41,
+	ATH12K_DBG_HTT_EXT_STATS_SOC_ERROR			= 45,
+	ATH12K_DBG_HTT_DBG_PDEV_PUNCTURE_STATS			= 46,
+	ATH12K_DBG_HTT_EXT_STATS_PDEV_SCHED_ALGO		= 49,
+	ATH12K_DBG_HTT_EXT_STATS_MANDATORY_MUOFDMA		= 51,
+	ATH12K_DGB_HTT_EXT_STATS_PDEV_MBSSID_CTRL_FRAME		= 54,
 
 	/* keep this last */
 	ATH12K_DBG_HTT_NUM_EXT_STATS,
@@ -200,10 +205,18 @@ enum ath12k_dbg_htt_tlv_tag {
 	HTT_STATS_PDEV_CCA_STAT_CUMULATIVE_TAG		= 72,
 	HTT_STATS_PDEV_CCA_COUNTERS_TAG			= 73,
 	HTT_STATS_TX_PDEV_MPDU_STATS_TAG		= 74,
+	HTT_STATS_TX_SOUNDING_STATS_TAG			= 80,
 	HTT_STATS_SCHED_TXQ_SCHED_ORDER_SU_TAG		= 86,
 	HTT_STATS_SCHED_TXQ_SCHED_INELIGIBILITY_TAG	= 87,
 	HTT_STATS_PDEV_OBSS_PD_TAG			= 88,
 	HTT_STATS_HW_WAR_TAG				= 89,
+	HTT_STATS_LATENCY_PROF_STATS_TAG		= 91,
+	HTT_STATS_LATENCY_CTX_TAG			= 92,
+	HTT_STATS_LATENCY_CNT_TAG			= 93,
+	HTT_STATS_RX_PDEV_UL_TRIG_STATS_TAG		= 94,
+	HTT_STATS_RX_PDEV_UL_OFDMA_USER_STATS_TAG	= 95,
+	HTT_STATS_RX_PDEV_UL_MUMIMO_TRIG_STATS_TAG	= 97,
+	HTT_STATS_RX_FSE_STATS_TAG			= 98,
 	HTT_STATS_SCHED_TXQ_SUPERCYCLE_TRIGGER_TAG	= 100,
 	HTT_STATS_PDEV_CTRL_PATH_TX_STATS_TAG		= 102,
 	HTT_STATS_RX_PDEV_RATE_EXT_STATS_TAG		= 103,
@@ -1240,6 +1253,82 @@ struct ath12k_htt_pdev_cca_stats_hist_v1_tlv {
 	__le32 collection_interval;
 } __packed;
 
+#define ATH12K_HTT_TX_CV_CORR_MAX_NUM_COLUMNS		8
+#define ATH12K_HTT_TX_NUM_AC_MUMIMO_USER_STATS		4
+#define ATH12K_HTT_TX_NUM_AX_MUMIMO_USER_STATS          8
+#define ATH12K_HTT_TX_NUM_BE_MUMIMO_USER_STATS		8
+#define ATH12K_HTT_TX_PDEV_STATS_NUM_BW_COUNTERS	4
+#define ATH12K_HTT_TX_NUM_MCS_CNTRS			12
+#define ATH12K_HTT_TX_NUM_EXTRA_MCS_CNTRS		2
+
+#define ATH12K_HTT_TX_NUM_OF_SOUNDING_STATS_WORDS \
+	(ATH12K_HTT_TX_PDEV_STATS_NUM_BW_COUNTERS * \
+	 ATH12K_HTT_TX_NUM_AX_MUMIMO_USER_STATS)
+
+enum ath12k_htt_txbf_sound_steer_modes {
+	ATH12K_HTT_IMPL_STEER_STATS		= 0,
+	ATH12K_HTT_EXPL_SUSIFS_STEER_STATS	= 1,
+	ATH12K_HTT_EXPL_SURBO_STEER_STATS	= 2,
+	ATH12K_HTT_EXPL_MUSIFS_STEER_STATS	= 3,
+	ATH12K_HTT_EXPL_MURBO_STEER_STATS	= 4,
+	ATH12K_HTT_TXBF_MAX_NUM_OF_MODES	= 5
+};
+
+enum ath12k_htt_stats_sounding_tx_mode {
+	ATH12K_HTT_TX_AC_SOUNDING_MODE		= 0,
+	ATH12K_HTT_TX_AX_SOUNDING_MODE		= 1,
+	ATH12K_HTT_TX_BE_SOUNDING_MODE		= 2,
+	ATH12K_HTT_TX_CMN_SOUNDING_MODE		= 3,
+};
+
+struct ath12k_htt_tx_sounding_stats_tlv {
+	__le32 tx_sounding_mode;
+	__le32 cbf_20[ATH12K_HTT_TXBF_MAX_NUM_OF_MODES];
+	__le32 cbf_40[ATH12K_HTT_TXBF_MAX_NUM_OF_MODES];
+	__le32 cbf_80[ATH12K_HTT_TXBF_MAX_NUM_OF_MODES];
+	__le32 cbf_160[ATH12K_HTT_TXBF_MAX_NUM_OF_MODES];
+	__le32 sounding[ATH12K_HTT_TX_NUM_OF_SOUNDING_STATS_WORDS];
+	__le32 cv_nc_mismatch_err;
+	__le32 cv_fcs_err;
+	__le32 cv_frag_idx_mismatch;
+	__le32 cv_invalid_peer_id;
+	__le32 cv_no_txbf_setup;
+	__le32 cv_expiry_in_update;
+	__le32 cv_pkt_bw_exceed;
+	__le32 cv_dma_not_done_err;
+	__le32 cv_update_failed;
+	__le32 cv_total_query;
+	__le32 cv_total_pattern_query;
+	__le32 cv_total_bw_query;
+	__le32 cv_invalid_bw_coding;
+	__le32 cv_forced_sounding;
+	__le32 cv_standalone_sounding;
+	__le32 cv_nc_mismatch;
+	__le32 cv_fb_type_mismatch;
+	__le32 cv_ofdma_bw_mismatch;
+	__le32 cv_bw_mismatch;
+	__le32 cv_pattern_mismatch;
+	__le32 cv_preamble_mismatch;
+	__le32 cv_nr_mismatch;
+	__le32 cv_in_use_cnt_exceeded;
+	__le32 cv_found;
+	__le32 cv_not_found;
+	__le32 sounding_320[ATH12K_HTT_TX_NUM_BE_MUMIMO_USER_STATS];
+	__le32 cbf_320[ATH12K_HTT_TXBF_MAX_NUM_OF_MODES];
+	__le32 cv_ntbr_sounding;
+	__le32 cv_found_upload_in_progress;
+	__le32 cv_expired_during_query;
+	__le32 cv_dma_timeout_error;
+	__le32 cv_buf_ibf_uploads;
+	__le32 cv_buf_ebf_uploads;
+	__le32 cv_buf_received;
+	__le32 cv_buf_fed_back;
+	__le32 cv_total_query_ibf;
+	__le32 cv_found_ibf;
+	__le32 cv_not_found_ibf;
+	__le32 cv_expired_during_query_ibf;
+} __packed;
+
 struct ath12k_htt_pdev_obss_pd_stats_tlv {
 	__le32 num_obss_tx_ppdu_success;
 	__le32 num_obss_tx_ppdu_failure;
@@ -1260,6 +1349,127 @@ struct ath12k_htt_pdev_obss_pd_stats_tlv {
 	__le32 num_srg_success_per_ac[ATH12K_HTT_NUM_AC_WMM];
 	__le32 num_obss_min_dur_check_flush_cnt;
 	__le32 num_sr_ppdu_abort_flush_cnt;
+} __packed;
+
+#define ATH12K_HTT_STATS_MAX_PROF_STATS_NAME_LEN	32
+#define ATH12K_HTT_LATENCY_PROFILE_NUM_MAX_HIST		3
+#define ATH12K_HTT_INTERRUPTS_LATENCY_PROFILE_MAX_HIST	3
+
+struct ath12k_htt_latency_prof_stats_tlv {
+	__le32 print_header;
+	s8 latency_prof_name[ATH12K_HTT_STATS_MAX_PROF_STATS_NAME_LEN];
+	__le32 cnt;
+	__le32 min;
+	__le32 max;
+	__le32 last;
+	__le32 tot;
+	__le32 avg;
+	__le32 hist_intvl;
+	__le32 hist[ATH12K_HTT_LATENCY_PROFILE_NUM_MAX_HIST];
+}  __packed;
+
+struct ath12k_htt_latency_prof_ctx_tlv {
+	__le32 duration;
+	__le32 tx_msdu_cnt;
+	__le32 tx_mpdu_cnt;
+	__le32 tx_ppdu_cnt;
+	__le32 rx_msdu_cnt;
+	__le32 rx_mpdu_cnt;
+} __packed;
+
+struct ath12k_htt_latency_prof_cnt_tlv {
+	__le32 prof_enable_cnt;
+} __packed;
+
+#define ATH12K_HTT_RX_NUM_MCS_CNTRS		12
+#define ATH12K_HTT_RX_NUM_GI_CNTRS		4
+#define ATH12K_HTT_RX_NUM_SPATIAL_STREAMS	8
+#define ATH12K_HTT_RX_NUM_BW_CNTRS		4
+#define ATH12K_HTT_RX_NUM_RU_SIZE_CNTRS		6
+#define ATH12K_HTT_RX_NUM_RU_SIZE_160MHZ_CNTRS	7
+#define ATH12K_HTT_RX_UL_MAX_UPLINK_RSSI_TRACK	5
+#define ATH12K_HTT_RX_NUM_REDUCED_CHAN_TYPES	2
+#define ATH12K_HTT_RX_NUM_EXTRA_MCS_CNTRS	2
+
+enum ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE {
+	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_26,
+	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_52,
+	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_106,
+	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_242,
+	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_484,
+	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_996,
+	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_996x2,
+	ATH12K_HTT_TX_RX_PDEV_STATS_NUM_AX_RU_SIZE_CNTRS,
+};
+
+struct ath12k_htt_rx_pdev_ul_ofdma_user_stats_tlv {
+	__le32 user_index;
+	__le32 rx_ulofdma_non_data_ppdu;
+	__le32 rx_ulofdma_data_ppdu;
+	__le32 rx_ulofdma_mpdu_ok;
+	__le32 rx_ulofdma_mpdu_fail;
+	__le32 rx_ulofdma_non_data_nusers;
+	__le32 rx_ulofdma_data_nusers;
+} __packed;
+
+struct ath12k_htt_rx_pdev_ul_trigger_stats_tlv {
+	__le32 mac_id__word;
+	__le32 rx_11ax_ul_ofdma;
+	__le32 ul_ofdma_rx_mcs[ATH12K_HTT_RX_NUM_MCS_CNTRS];
+	__le32 ul_ofdma_rx_gi[ATH12K_HTT_RX_NUM_GI_CNTRS][ATH12K_HTT_RX_NUM_MCS_CNTRS];
+	__le32 ul_ofdma_rx_nss[ATH12K_HTT_RX_NUM_SPATIAL_STREAMS];
+	__le32 ul_ofdma_rx_bw[ATH12K_HTT_RX_NUM_BW_CNTRS];
+	__le32 ul_ofdma_rx_stbc;
+	__le32 ul_ofdma_rx_ldpc;
+	__le32 data_ru_size_ppdu[ATH12K_HTT_RX_NUM_RU_SIZE_160MHZ_CNTRS];
+	__le32 non_data_ru_size_ppdu[ATH12K_HTT_RX_NUM_RU_SIZE_160MHZ_CNTRS];
+	__le32 uplink_sta_aid[ATH12K_HTT_RX_UL_MAX_UPLINK_RSSI_TRACK];
+	__le32 uplink_sta_target_rssi[ATH12K_HTT_RX_UL_MAX_UPLINK_RSSI_TRACK];
+	__le32 uplink_sta_fd_rssi[ATH12K_HTT_RX_UL_MAX_UPLINK_RSSI_TRACK];
+	__le32 uplink_sta_power_headroom[ATH12K_HTT_RX_UL_MAX_UPLINK_RSSI_TRACK];
+	__le32 red_bw[ATH12K_HTT_RX_NUM_REDUCED_CHAN_TYPES][ATH12K_HTT_RX_NUM_BW_CNTRS];
+	__le32 ul_ofdma_bsc_trig_rx_qos_null_only;
+} __packed;
+
+#define ATH12K_HTT_TX_UL_MUMIMO_USER_STATS	8
+
+struct ath12k_htt_rx_ul_mumimo_trig_stats_tlv {
+	__le32 mac_id__word;
+	__le32 rx_11ax_ul_mumimo;
+	__le32 ul_mumimo_rx_mcs[ATH12K_HTT_RX_NUM_MCS_CNTRS];
+	__le32 ul_rx_gi[ATH12K_HTT_RX_NUM_GI_CNTRS][ATH12K_HTT_RX_NUM_MCS_CNTRS];
+	__le32 ul_mumimo_rx_nss[ATH12K_HTT_RX_NUM_SPATIAL_STREAMS];
+	__le32 ul_mumimo_rx_bw[ATH12K_HTT_RX_NUM_BW_CNTRS];
+	__le32 ul_mumimo_rx_stbc;
+	__le32 ul_mumimo_rx_ldpc;
+	__le32 ul_mumimo_rx_mcs_ext[ATH12K_HTT_RX_NUM_EXTRA_MCS_CNTRS];
+	__le32 ul_gi_ext[ATH12K_HTT_RX_NUM_GI_CNTRS][ATH12K_HTT_RX_NUM_EXTRA_MCS_CNTRS];
+	s8 ul_rssi[ATH12K_HTT_RX_NUM_SPATIAL_STREAMS][ATH12K_HTT_RX_NUM_BW_CNTRS];
+	s8 tgt_rssi[ATH12K_HTT_TX_UL_MUMIMO_USER_STATS][ATH12K_HTT_RX_NUM_BW_CNTRS];
+	s8 fd[ATH12K_HTT_TX_UL_MUMIMO_USER_STATS][ATH12K_HTT_RX_NUM_SPATIAL_STREAMS];
+	s8 db[ATH12K_HTT_TX_UL_MUMIMO_USER_STATS][ATH12K_HTT_RX_NUM_SPATIAL_STREAMS];
+	__le32 red_bw[ATH12K_HTT_RX_NUM_REDUCED_CHAN_TYPES][ATH12K_HTT_RX_NUM_BW_CNTRS];
+	__le32 mumimo_bsc_trig_rx_qos_null_only;
+} __packed;
+
+#define ATH12K_HTT_RX_NUM_MAX_PEAK_OCCUPANCY_INDEX	10
+#define ATH12K_HTT_RX_NUM_MAX_CURR_OCCUPANCY_INDEX	10
+#define ATH12K_HTT_RX_NUM_SQUARE_INDEX			6
+#define ATH12K_HTT_RX_NUM_MAX_PEAK_SEARCH_INDEX		4
+#define ATH12K_HTT_RX_NUM_MAX_PENDING_SEARCH_INDEX	4
+
+struct ath12k_htt_rx_fse_stats_tlv {
+	__le32 fse_enable_cnt;
+	__le32 fse_disable_cnt;
+	__le32 fse_cache_invalidate_entry_cnt;
+	__le32 fse_full_cache_invalidate_cnt;
+	__le32 fse_num_cache_hits_cnt;
+	__le32 fse_num_searches_cnt;
+	__le32 fse_cache_occupancy_peak_cnt[ATH12K_HTT_RX_NUM_MAX_PEAK_OCCUPANCY_INDEX];
+	__le32 fse_cache_occupancy_curr_cnt[ATH12K_HTT_RX_NUM_MAX_CURR_OCCUPANCY_INDEX];
+	__le32 fse_search_stat_square_cnt[ATH12K_HTT_RX_NUM_SQUARE_INDEX];
+	__le32 fse_search_stat_peak_cnt[ATH12K_HTT_RX_NUM_MAX_PEAK_SEARCH_INDEX];
+	__le32 fse_search_stat_pending_cnt[ATH12K_HTT_RX_NUM_MAX_PENDING_SEARCH_INDEX];
 } __packed;
 
 #define ATH12K_HTT_TX_BF_RATE_STATS_NUM_MCS_COUNTERS		14
@@ -1597,17 +1807,6 @@ enum ATH12K_HTT_RC_MODE {
 	ATH12K_HTT_RC_MODE_MU6_INTF,
 	ATH12K_HTT_RC_MODE_MU7_INTF,
 	ATH12K_HTT_RC_MODE_2D_COUNT
-};
-
-enum ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE {
-	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_26,
-	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_52,
-	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_106,
-	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_242,
-	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_484,
-	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_996,
-	ATH12K_HTT_TX_RX_PDEV_STATS_AX_RU_SIZE_996x2,
-	ATH12K_HTT_TX_RX_PDEV_STATS_NUM_AX_RU_SIZE_CNTRS
 };
 
 enum ath12k_htt_stats_rc_mode {
