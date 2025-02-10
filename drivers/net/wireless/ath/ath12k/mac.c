@@ -4186,8 +4186,8 @@ ath12k_mac_select_scan_device(struct ieee80211_hw *hw,
 		band = NL80211_BAND_6GHZ;
 
 	for_each_ar(ah, ar, i) {
-		/* TODO 5 GHz low high split changes */
-		if (ar->mac.sbands[band].channels)
+		if (center_freq >= ar->freq_range.start_freq &&
+		    center_freq <= ar->freq_range.end_freq)
 			return ar;
 	}
 
@@ -11512,6 +11512,8 @@ static int ath12k_mac_hw_register(struct ath12k_hw *ah)
 
 		ath12k_fw_stats_init(ar);
 		ath12k_debugfs_register(ar);
+		ath12k_dbg(ar->ab, ATH12K_DBG_MAC, "mac pdev %u freq limits %u->%u MHz\n",
+			   ar->pdev->pdev_id, ar->freq_range.start_freq, ar->freq_range.end_freq);
 	}
 
 	return 0;
