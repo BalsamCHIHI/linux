@@ -204,6 +204,22 @@ static void ath12k_copy_regd(struct ieee80211_regdomain *regd_orig,
 		       sizeof(struct ieee80211_reg_rule));
 }
 
+int ath12k_reg_get_num_chans_in_band(struct ath12k *ar,
+				     struct ieee80211_supported_band *band)
+{
+	int i, count = 0;
+	u32 center_freq;
+
+	for (i = 0; i < band->n_channels; i++) {
+		center_freq = band->channels[i].center_freq;
+		if (center_freq >= KHZ_TO_MHZ(ar->freq_range.start_freq) &&
+		    center_freq <= KHZ_TO_MHZ(ar->freq_range.end_freq))
+			count++;
+	}
+
+	return count;
+}
+
 int ath12k_regd_update(struct ath12k *ar, bool init)
 {
 	struct ath12k_hw *ah = ath12k_ar_to_ah(ar);
