@@ -100,5 +100,7 @@ struct ieee80211_regdomain *ath12k_reg_build_regd(struct ath12k_base *ab,
 						  bool intersect);
 int ath12k_regd_update(struct ath12k *ar, bool init);
 int ath12k_reg_update_chan_list(struct ath12k *ar);
+int ath12k_reg_get_num_chans_in_band(struct ath12k *ar,
+				     struct ieee80211_supported_band *band);
 
 #endif
