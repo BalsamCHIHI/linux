@@ -611,6 +611,16 @@ ath12k_reg_update_weather_radar_band(struct ath12k_base *ab,
 	*rule_idx = i;
 }
 
+static void ath12k_copy_reg_rule(struct ath12k_reg_freq *ath12k_reg_freq,
+				 struct ath12k_reg_rule *reg_rule)
+{
+	if (!ath12k_reg_freq->start_freq)
+		ath12k_reg_freq->start_freq = reg_rule->start_freq;
+
+	if (!ath12k_reg_freq->end_freq || ath12k_reg_freq->end_freq < reg_rule->end_freq)
+		ath12k_reg_freq->end_freq = reg_rule->end_freq;
+}
+
 struct ieee80211_regdomain *
 ath12k_reg_build_regd(struct ath12k_base *ab,
 		      struct ath12k_reg_info *reg_info, bool intersect)
@@ -664,6 +674,7 @@ ath12k_reg_build_regd(struct ath12k_base *ab,
 			max_bw = min_t(u16, reg_rule->max_bw,
 				       reg_info->max_bw_2g);
 			flags = 0;
+			ath12k_copy_reg_rule(&ab->reg_freq_2g, reg_rule);
 		} else if (reg_info->num_5g_reg_rules &&
 			   (j < reg_info->num_5g_reg_rules)) {
 			reg_rule = reg_info->reg_rules_5g_ptr + j++;
@@ -677,6 +688,9 @@ ath12k_reg_build_regd(struct ath12k_base *ab,
 			 * per other BW rule flags we pass from here
 			 */
 			flags = NL80211_RRF_AUTO_BW;
+
+			ath12k_copy_reg_rule(&ab->reg_freq_5g, reg_rule);
+
 		} else if (reg_info->is_ext_reg_event &&
 			   reg_info->num_6g_reg_rules_ap[WMI_REG_INDOOR_AP] &&
 			(k < reg_info->num_6g_reg_rules_ap[WMI_REG_INDOOR_AP])) {
@@ -684,6 +698,7 @@ ath12k_reg_build_regd(struct ath12k_base *ab,
 			max_bw = min_t(u16, reg_rule->max_bw,
 				       reg_info->max_bw_6g_ap[WMI_REG_INDOOR_AP]);
 			flags = NL80211_RRF_AUTO_BW;
+			ath12k_copy_reg_rule(&ab->reg_freq_6g, reg_rule);
 		} else {
 			break;
 		}
