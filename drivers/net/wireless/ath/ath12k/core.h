@@ -305,6 +305,7 @@ struct ath12k_link_vif {
 	u8 current_cntdown_counter;
 	struct ath12k_link_stats link_stats;
 	spinlock_t link_stats_lock; /* Protects updates to link_stats */
+	bool is_scan_vif;
 };
 
 struct ath12k_vif {
