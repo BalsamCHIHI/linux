@@ -746,6 +746,7 @@ struct ath12k {
 	int monitor_vdev_id;
 
 	struct wiphy_radio_freq_range freq_range;
+	u32 num_channels;
 
 	bool nlo_enabled;
 
