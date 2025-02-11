@@ -10807,11 +10807,12 @@ static int ath12k_mac_setup_channels_rates(struct ath12k *ar,
 					   u32 supported_bands,
 					   struct ieee80211_supported_band *bands[])
 {
+	struct ath12k_base *ab = ar->ab;
 	struct ieee80211_supported_band *band;
 	struct ath12k_wmi_hal_reg_capabilities_ext_arg *reg_cap;
 	struct ath12k_hw *ah = ar->ah;
 	void *channels;
-	u32 phy_id;
+	u32 phy_id, freq_low, freq_high;
 
 	BUILD_BUG_ON((ARRAY_SIZE(ath12k_2ghz_channels) +
 		      ARRAY_SIZE(ath12k_5ghz_channels) +
@@ -10835,13 +10836,19 @@ static int ath12k_mac_setup_channels_rates(struct ath12k *ar,
 		band->bitrates = ath12k_g_rates;
 		bands[NL80211_BAND_2GHZ] = band;
 
-		if (ar->ab->hw_params->single_pdev_only) {
+		if (ab->hw_params->single_pdev_only) {
 			phy_id = ath12k_get_phy_id(ar, WMI_HOST_WLAN_2GHZ_CAP);
 			reg_cap = &ar->ab->hal_reg_cap[phy_id];
 		}
+
+		freq_low = max(reg_cap->low_2ghz_chan,
+			       ab->reg_freq_2g.start_freq);
+		freq_high = min(reg_cap->high_2ghz_chan,
+				ab->reg_freq_2g.end_freq);
+
 		ath12k_mac_update_ch_list(ar, band,
-					  reg_cap->low_2ghz_chan,
-					  reg_cap->high_2ghz_chan);
+					  freq_low,
+					  freq_high);
 	}
 
 	if (supported_bands & WMI_HOST_WLAN_5GHZ_CAP) {
@@ -10861,9 +10868,15 @@ static int ath12k_mac_setup_channels_rates(struct ath12k *ar,
 			band->n_bitrates = ath12k_a_rates_size;
 			band->bitrates = ath12k_a_rates;
 			bands[NL80211_BAND_6GHZ] = band;
+
+			freq_low = max(reg_cap->low_5ghz_chan,
+				       ab->reg_freq_6g.start_freq);
+			freq_high = min(reg_cap->high_5ghz_chan,
+					ab->reg_freq_6g.end_freq);
+
 			ath12k_mac_update_ch_list(ar, band,
-						  reg_cap->low_5ghz_chan,
-						  reg_cap->high_5ghz_chan);
+						  freq_low,
+						  freq_high);
 			ah->use_6ghz_regd = true;
 		}
 
@@ -10890,9 +10903,13 @@ static int ath12k_mac_setup_channels_rates(struct ath12k *ar,
 				reg_cap = &ar->ab->hal_reg_cap[phy_id];
 			}
 
+			freq_low = max(reg_cap->low_5ghz_chan,
+				       ab->reg_freq_5g.start_freq);
+			freq_high = min(reg_cap->high_5ghz_chan,
+					ab->reg_freq_5g.end_freq);
 			ath12k_mac_update_ch_list(ar, band,
-						  reg_cap->low_5ghz_chan,
-						  reg_cap->high_5ghz_chan);
+						  freq_low,
+						  freq_high);
 		}
 	}
 
