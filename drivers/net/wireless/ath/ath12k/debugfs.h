@@ -26,6 +26,9 @@ static inline int ath12k_debugfs_rx_filter(struct ath12k *ar)
 	return ar->debug.rx_filter;
 }
 
+void ath12k_debugfs_op_vif_add(struct ieee80211_hw *hw,
+			       struct ieee80211_vif *vif);
+
 #define ATH12K_CCK_RATES			4
 #define ATH12K_OFDM_RATES			8
 #define ATH12K_HT_RATES				8
@@ -141,6 +144,11 @@ static inline bool ath12k_debugfs_is_extd_rx_stats_enabled(struct ath12k *ar)
 static inline int ath12k_debugfs_rx_filter(struct ath12k *ar)
 {
 	return 0;
+}
+
+static inline void ath12k_debugfs_op_vif_add(struct ieee80211_hw *hw,
+					     struct ieee80211_vif *vif)
+{
 }
 #endif /* CONFIG_ATH12K_DEBUGFS */
 
