@@ -3572,7 +3572,7 @@ static struct ath12k_link_vif *ath12k_mac_assign_link_vif(struct ath12k_hw *ah,
 	if (arvif)
 		return arvif;
 
-	if (!vif->valid_links) {
+	if (!vif->valid_links && !ahvif->links_map) {
 		/* Use deflink for Non-ML VIFs and mark the link id as 0
 		 */
 		link_id = 0;
@@ -4315,6 +4315,37 @@ static void ath12k_scan_timeout_work(struct work_struct *work)
 	wiphy_unlock(ath12k_ar_to_hw(ar)->wiphy);
 }
 
+static void ath12k_mac_scan_send_complete(struct ath12k *ar,
+					  struct cfg80211_scan_info info)
+{
+	struct ath12k *partner_ar;
+	struct ath12k_pdev *pdev;
+	struct ath12k_base *ab;
+	struct ath12k_hw_group *ag = ar->ab->ag;
+	bool send_completion = true;
+	struct ath12k_hw *ah = ar->ah;
+	int i, j;
+
+	for (i = 0; i < ag->num_devices; i++) {
+		ab = ag->ab[i];
+		for (j = 0; j < ab->num_radios; j++) {
+			pdev = &ab->pdevs[j];
+			partner_ar = pdev->ar;
+
+			if (!partner_ar || partner_ar == ar)
+				continue;
+			if (partner_ar->scan.state == ATH12K_SCAN_RUNNING) {
+				send_completion = false;
+				break;
+			}
+		}
+		if (!send_completion)
+			break;
+	}
+	if (send_completion)
+		ieee80211_scan_completed(ah->hw, &info);
+}
+
 static void ath12k_scan_vdev_clean_work(struct wiphy *wiphy, struct wiphy_work *work)
 {
 	struct ath12k *ar = container_of(work, struct ath12k,
@@ -4353,7 +4384,7 @@ work_complete:
 				    ATH12K_SCAN_STARTING)),
 		};
 
-		ieee80211_scan_completed(ar->ah->hw, &info);
+		ath12k_mac_scan_send_complete(ar, info);
 	}
 
 	ar->scan.state = ATH12K_SCAN_IDLE;
@@ -4555,18 +4586,25 @@ ath12k_mac_find_link_id_by_ar(struct ath12k_vif *ahvif, struct ath12k *ar)
 			return link_id;
 	}
 
+	/* When it comes to STA vdev, make sure to pick the next available link.
+	 * There are cases where single scan req needs to be split in driver
+	 * and initiate separate scan requests to firmware based on device.
+	 */
+	if (ahvif->vdev_type == WMI_VDEV_TYPE_STA)
+		return ffs(~ahvif->links_map) - 1;
 	/* input ar is not assigned to any of the links of ML VIF, use scan
 	 * link (15) for scan vdev creation.
 	 */
 	return ATH12K_DEFAULT_SCAN_LINK;
 }
 
-static int ath12k_mac_op_hw_scan(struct ieee80211_hw *hw,
-				 struct ieee80211_vif *vif,
-				 struct ieee80211_scan_request *hw_req)
+static int ath12k_mac_initiate_hw_scan(struct ieee80211_hw *hw,
+				       struct ieee80211_vif *vif,
+				       struct ieee80211_scan_request *hw_req,
+				       struct ath12k *ar,
+				       u8 from_index, u8 to_index)
 {
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
-	struct ath12k *ar;
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_link_vif *arvif;
 	struct cfg80211_scan_request *req = &hw_req->req;
@@ -4575,17 +4613,11 @@ static int ath12k_mac_op_hw_scan(struct ieee80211_hw *hw,
 	int ret;
 	int i;
 	bool create = true;
+	u8 n_channels = to_index - from_index;
 
 	lockdep_assert_wiphy(hw->wiphy);
 
 	arvif = &ahvif->deflink;
-
-	/* Since the targeted scan device could depend on the frequency
-	 * requested in the hw_req, select the corresponding radio
-	 */
-	ar = ath12k_mac_select_scan_device(hw, vif, hw_req->req.channels[0]->center_freq);
-	if (!ar)
-		return -EINVAL;
 
 	/* check if any of the links of ML VIF is already started on
 	 * radio(ar) correpsondig to given scan frequency and use it,
@@ -4627,8 +4659,10 @@ static int ath12k_mac_op_hw_scan(struct ieee80211_hw *hw,
 		 */
 		arvif = ath12k_mac_assign_link_vif(ah, vif, link_id);
 
+		arvif->is_scan_vif = true;
 		ret = ath12k_mac_vdev_create(ar, arvif);
 		if (ret) {
+			ath12k_mac_unassign_link_vif(arvif);
 			ath12k_warn(ar->ab, "unable to create scan vdev %d\n", ret);
 			return -EINVAL;
 		}
@@ -4682,8 +4716,8 @@ static int ath12k_mac_op_hw_scan(struct ieee80211_hw *hw,
 		arg->scan_f_passive = 1;
 	}
 
-	if (req->n_channels) {
-		arg->num_chan = req->n_channels;
+	if (n_channels) {
+		arg->num_chan = n_channels;
 		arg->chan_list = kcalloc(arg->num_chan, sizeof(*arg->chan_list),
 					 GFP_KERNEL);
 		if (!arg->chan_list) {
@@ -4692,7 +4726,7 @@ static int ath12k_mac_op_hw_scan(struct ieee80211_hw *hw,
 		}
 
 		for (i = 0; i < arg->num_chan; i++)
-			arg->chan_list[i] = req->channels[i]->center_freq;
+			arg->chan_list[i] = req->channels[i + from_index]->center_freq;
 	}
 
 	ret = ath12k_start_scan(ar, arg);
@@ -4725,6 +4759,48 @@ exit:
 	}
 
 	return ret;
+}
+
+static int ath12k_mac_op_hw_scan(struct ieee80211_hw *hw,
+				 struct ieee80211_vif *vif,
+				 struct ieee80211_scan_request *hw_req)
+{
+	struct ath12k *ar, *prev_ar;
+	int i, from_index, to_index;
+
+	lockdep_assert_wiphy(hw->wiphy);
+	/* Since the targeted scan device could depend on the frequency
+	 * requested in the hw_req, select the corresponding radio
+	 */
+	prev_ar = ath12k_mac_select_scan_device(hw, vif,
+						hw_req->req.channels[0]->center_freq);
+	if (!prev_ar) {
+		ath12k_warn(ar->ab, "unable to select device for scan\n");
+		return -EINVAL;
+	}
+
+	/* NOTE: There could be 5G low/high channels as mac80211 sees
+	 * it as an single band. In that case split the hw request and
+	 * perform multiple scans
+	 */
+	from_index = 0;
+	for (i = 1; i < hw_req->req.n_channels; i++) {
+		ar = ath12k_mac_select_scan_device(hw, vif,
+						   hw_req->req.channels[i]->center_freq);
+		if (!ar) {
+			ath12k_warn(ar->ab, "unable to select device for scan\n");
+			return -EINVAL;
+		}
+		if (prev_ar == ar)
+			continue;
+
+		to_index = i;
+		ath12k_mac_initiate_hw_scan(hw, vif, hw_req, prev_ar,
+					    from_index, to_index);
+		from_index = to_index;
+		prev_ar = ar;
+	}
+	return ath12k_mac_initiate_hw_scan(hw, vif, hw_req, prev_ar, from_index, i);
 }
 
 static void ath12k_mac_op_cancel_hw_scan(struct ieee80211_hw *hw,
@@ -8255,12 +8331,12 @@ int ath12k_mac_vdev_create(struct ath12k *ar, struct ath12k_link_vif *arvif)
 	struct ieee80211_vif *vif = ath12k_ahvif_to_vif(ahvif);
 	struct ath12k_wmi_vdev_create_arg vdev_arg = {0};
 	struct ath12k_wmi_peer_create_arg peer_param = {0};
-	struct ieee80211_bss_conf *link_conf;
+	struct ieee80211_bss_conf *link_conf = NULL;
 	u32 param_id, param_value;
 	u16 nss;
 	int i;
 	int ret, vdev_id;
-	u8 link_id;
+	u8 link_id, link_addr[ETH_ALEN];
 
 	lockdep_assert_wiphy(hw->wiphy);
 
@@ -8273,13 +8349,18 @@ int ath12k_mac_vdev_create(struct ath12k *ar, struct ath12k_link_vif *arvif)
 		link_id = arvif->link_id;
 
 	link_conf = wiphy_dereference(hw->wiphy, vif->link_conf[link_id]);
-	if (!link_conf) {
+	if (!link_conf && !arvif->is_scan_vif) {
 		ath12k_warn(ar->ab, "unable to access bss link conf in vdev create for vif %pM link %u\n",
 			    vif->addr, arvif->link_id);
 		return -ENOLINK;
 	}
 
-	memcpy(arvif->bssid, link_conf->addr, ETH_ALEN);
+	if (link_conf) {
+		memcpy(arvif->bssid, link_conf->addr, ETH_ALEN);
+	} else {
+		eth_random_addr(link_addr);
+		memcpy(arvif->bssid, link_addr, ETH_ALEN);
+	}
 
 	arvif->ar = ar;
 	vdev_id = __ffs64(ab->free_vdev_map);
@@ -8423,7 +8504,10 @@ int ath12k_mac_vdev_create(struct ath12k *ar, struct ath12k_link_vif *arvif)
 		break;
 	}
 
-	arvif->txpower = link_conf->txpower;
+	if (link_conf)
+		arvif->txpower = link_conf->txpower;
+	else
+		arvif->txpower = NL80211_TX_POWER_AUTOMATIC;
 	ret = ath12k_mac_txpower_recalc(ar);
 	if (ret)
 		goto err_peer_del;
@@ -10733,7 +10817,7 @@ static const struct ieee80211_ops ath12k_ops = {
 	.hw_scan                        = ath12k_mac_op_hw_scan,
 	.cancel_hw_scan                 = ath12k_mac_op_cancel_hw_scan,
 	.set_key                        = ath12k_mac_op_set_key,
-	.set_rekey_data	                = ath12k_mac_op_set_rekey_data,
+	.set_rekey_data                 = ath12k_mac_op_set_rekey_data,
 	.sta_state                      = ath12k_mac_op_sta_state,
 	.sta_set_txpwr			= ath12k_mac_op_sta_set_txpwr,
 	.link_sta_rc_update		= ath12k_mac_op_link_sta_rc_update,
