@@ -14,8 +14,6 @@ void ath12k_debugfs_register(struct ath12k *ar);
 void ath12k_debugfs_unregister(struct ath12k *ar);
 void ath12k_debugfs_fw_stats_process(struct ath12k *ar,
 				     struct ath12k_fw_stats *stats);
-void ath12k_debugfs_fw_stats_reset(struct ath12k *ar);
-
 static inline bool ath12k_debugfs_is_extd_rx_stats_enabled(struct ath12k *ar)
 {
 	return ar->debug.extd_rx_stats;
@@ -129,10 +127,6 @@ static inline void ath12k_debugfs_unregister(struct ath12k *ar)
 
 static inline void ath12k_debugfs_fw_stats_process(struct ath12k *ar,
 						   struct ath12k_fw_stats *stats)
-{
-}
-
-static inline void ath12k_debugfs_fw_stats_reset(struct ath12k *ar)
 {
 }
 
