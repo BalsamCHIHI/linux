@@ -205,10 +205,27 @@ static void ath12k_copy_regd(struct ieee80211_regdomain *regd_orig,
 		       sizeof(struct ieee80211_reg_rule));
 }
 
+int ath12k_reg_get_num_chans_in_band(struct ath12k *ar,
+				     struct ieee80211_supported_band *band)
+{
+	int i, count = 0;
+	u32 center_freq;
+
+	for (i = 0; i < band->n_channels; i++) {
+		center_freq = band->channels[i].center_freq;
+		if (center_freq >= KHZ_TO_MHZ(ar->freq_range.start_freq) &&
+		    center_freq <= KHZ_TO_MHZ(ar->freq_range.end_freq))
+			count++;
+	}
+
+	return count;
+}
+
 int ath12k_regd_update(struct ath12k *ar, bool init)
 {
 	u32 phy_id, freq_low = 0, freq_high = 0, supported_bands, band;
 	struct ath12k_wmi_hal_reg_capabilities_ext_arg *reg_cap;
+	struct ieee80211_supported_band *update_band;
 	struct ath12k_hw *ah = ath12k_ar_to_ah(ar);
 	struct ieee80211_hw *hw = ah->hw;
 	struct ieee80211_regdomain *regd, *regd_copy = NULL;
@@ -233,6 +250,7 @@ int ath12k_regd_update(struct ath12k *ar, bool init)
 		goto err;
 	}
 
+	update_band = &ar->mac.sbands[band];
 	reg_cap = &ab->hal_reg_cap[ar->pdev_idx];
 
 	if (ab->hw_params->single_pdev_only && !ar->supports_6ghz) {
@@ -255,9 +273,10 @@ int ath12k_regd_update(struct ath12k *ar, bool init)
 	}
 
 	ath12k_mac_update_freq_range(ar, freq_low, freq_high);
+	ar->num_channels = ath12k_reg_get_num_chans_in_band(ar, update_band);
 
-	ath12k_dbg(ab, ATH12K_DBG_REG, "pdev %u reg updated freq limits %u->%u MHz\n",
-		   ar->pdev->pdev_id, freq_low, freq_high);
+	ath12k_dbg(ab, ATH12K_DBG_REG, "pdev %u reg updated freq limits %u->%u MHz, no. of channels %u\n",
+		   ar->pdev->pdev_id, freq_low, freq_high, ar->num_channels);
 
 	/* If one of the radios within ah has already updated the regd for
 	 * the wiphy, then avoid setting regd again
