@@ -825,6 +825,7 @@ struct ieee80211_bss_conf {
 	bool eht_support;
 
 	bool csa_active;
+	bool enable_mcs15;
 
 	bool mu_mimo_owner;
 	struct ieee80211_chanctx_conf __rcu *chanctx_conf;
