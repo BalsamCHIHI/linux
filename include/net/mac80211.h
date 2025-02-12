@@ -703,6 +703,7 @@ struct ieee80211_parsed_tpe {
  * @pwr_reduction: power constraint of BSS.
  * @eht_support: does this BSS support EHT
  * @csa_active: marks whether a channel switch is going on.
+ * @enable_mcs15: enable EHT-MCS 15 reception capability.
  * @mu_mimo_owner: indicates interface owns MU-MIMO capability
  * @chanctx_conf: The channel context this interface is assigned to, or %NULL
  *	when it is not assigned. This pointer is RCU-protected due to the TX
@@ -825,6 +826,7 @@ struct ieee80211_bss_conf {
 	bool eht_support;
 
 	bool csa_active;
+	bool enable_mcs15;
 
 	bool mu_mimo_owner;
 	struct ieee80211_chanctx_conf __rcu *chanctx_conf;
