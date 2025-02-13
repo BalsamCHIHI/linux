@@ -2119,15 +2119,16 @@ static void ath12k_get_dot11_hdr_from_rx_desc(struct ath12k *ar,
 	u16 qos_ctl;
 	u8 *crypto_hdr, mesh_ctrl;
 
+	ath12k_dp_rx_desc_get_dot11_hdr(ab, rx_desc, &hdr);
+	hdr_len = ieee80211_hdrlen(hdr.frame_control);
+	mesh_ctrl = ath12k_dp_rx_h_mesh_ctl_present(ab, rx_desc);
+
 	if (!(status->flag & RX_FLAG_IV_STRIPPED)) {
 		crypto_len = ath12k_dp_rx_crypto_param_len(ar, enctype);
 		crypto_hdr = skb_push(msdu, crypto_len);
 		ath12k_dp_rx_desc_get_crypto_header(ab, rx_desc, crypto_hdr, enctype);
 	}
 
-	ath12k_dp_rx_desc_get_dot11_hdr(ab, rx_desc, &hdr);
-	hdr_len = ieee80211_hdrlen(hdr.frame_control);
-	mesh_ctrl = ath12k_dp_rx_h_mesh_ctl_present(ab, rx_desc);
 	skb_push(msdu, hdr_len);
 	memcpy(msdu->data, &hdr, min(hdr_len, sizeof(hdr)));
 
