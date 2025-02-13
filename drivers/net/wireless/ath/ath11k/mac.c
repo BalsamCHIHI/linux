@@ -1529,10 +1529,16 @@ static int ath11k_mac_set_vif_params(struct ath11k_vif *arvif,
 	return ret;
 }
 
-static struct ath11k_vif *ath11k_mac_get_tx_arvif(struct ath11k_vif *arvif)
+static struct ath11k_vif *ath11k_mac_get_tx_arvif(struct ath11k_vif *arvif,
+						  struct ieee80211_bss_conf *link_conf)
 {
-	if (arvif->vif->mbssid_tx_vif)
-		return ath11k_vif_to_arvif(arvif->vif->mbssid_tx_vif);
+	struct ieee80211_bss_conf *tx_bss_conf;
+
+	lockdep_assert_wiphy(arvif->ar->hw->wiphy);
+
+	tx_bss_conf = wiphy_dereference(arvif->ar->hw->wiphy, link_conf->tx_bss_conf);
+	if (tx_bss_conf)
+		return ath11k_vif_to_arvif(tx_bss_conf->vif);
 
 	return NULL;
 }
@@ -1643,7 +1649,7 @@ static int ath11k_mac_setup_bcn_tmpl(struct ath11k_vif *arvif)
 	/* Target does not expect beacon templates for the already up
 	 * non-transmitting interfaces, and results in a crash if sent.
 	 */
-	tx_arvif = ath11k_mac_get_tx_arvif(arvif);
+	tx_arvif = ath11k_mac_get_tx_arvif(arvif, &vif->bss_conf);
 	if (tx_arvif) {
 		if (arvif != tx_arvif && arvif->is_up)
 			return 0;
@@ -1709,7 +1715,7 @@ static void ath11k_control_beaconing(struct ath11k_vif *arvif,
 
 	ether_addr_copy(arvif->bssid, info->bssid);
 
-	tx_arvif = ath11k_mac_get_tx_arvif(arvif);
+	tx_arvif = ath11k_mac_get_tx_arvif(arvif, &arvif->vif->bss_conf);
 	ret = ath11k_wmi_vdev_up(arvif->ar, arvif->vdev_id, arvif->aid,
 				 arvif->bssid,
 				 tx_arvif ? tx_arvif->bssid : NULL,
@@ -6393,7 +6399,7 @@ static int ath11k_mac_setup_vdev_params_mbssid(struct ath11k_vif *arvif,
 	struct ath11k_vif *tx_arvif;
 
 	*tx_vdev_id = 0;
-	tx_arvif = ath11k_mac_get_tx_arvif(arvif);
+	tx_arvif = ath11k_mac_get_tx_arvif(arvif, &arvif->vif->bss_conf);
 	if (!tx_arvif) {
 		*flags = WMI_HOST_VDEV_FLAGS_NON_MBSSID_AP;
 		return 0;
@@ -7418,7 +7424,7 @@ ath11k_mac_update_vif_chan(struct ath11k *ar,
 			ath11k_warn(ab, "failed to update bcn tmpl during csa: %d\n",
 				    ret);
 
-		tx_arvif = ath11k_mac_get_tx_arvif(arvif);
+		tx_arvif = ath11k_mac_get_tx_arvif(arvif, &arvif->vif->bss_conf);
 		ret = ath11k_wmi_vdev_up(arvif->ar, arvif->vdev_id, arvif->aid,
 					 arvif->bssid,
 					 tx_arvif ? tx_arvif->bssid : NULL,
