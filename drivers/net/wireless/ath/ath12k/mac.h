@@ -54,7 +54,9 @@ struct ath12k_generic_iter {
  * for driver usage purpose.
  */
 #define ATH12K_DEFAULT_SCAN_LINK	IEEE80211_MLD_MAX_NUM_LINKS
-#define ATH12K_NUM_MAX_LINKS		(IEEE80211_MLD_MAX_NUM_LINKS + 1)
+/* Define 1 scan link for each radio for parallel scan purposes */
+#define ATH12K_NUM_MAX_LINKS	(IEEE80211_MLD_MAX_NUM_LINKS + ATH12K_GROUP_MAX_RADIO)
+#define ATH12K_SCAN_LINKS_MASK	GENMASK(ATH12K_NUM_MAX_LINKS, IEEE80211_MLD_MAX_NUM_LINKS)
 
 #define HECAP_PHY_SUBFMR_GET(hecap_phy) \
 	u8_get_bits(hecap_phy[3], IEEE80211_HE_PHY_CAP3_SU_BEAMFORMER)
