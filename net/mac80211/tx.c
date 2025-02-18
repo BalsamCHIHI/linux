@@ -4701,6 +4701,7 @@ netdev_tx_t ieee80211_subif_start_xmit_8023(struct sk_buff *skb,
 	struct ethhdr *ehdr = (struct ethhdr *)skb->data;
 	struct ieee80211_key *key;
 	struct sta_info *sta;
+	bool is_eapol;
 
 	if (unlikely(!ieee80211_sdata_running(sdata) || skb->len < ETH_HLEN)) {
 		kfree_skb(skb);
@@ -4714,9 +4715,10 @@ netdev_tx_t ieee80211_subif_start_xmit_8023(struct sk_buff *skb,
 		goto out;
 	}
 
+	is_eapol = (sdata->control_port_protocol == ehdr->h_proto);
 	if (unlikely(IS_ERR_OR_NULL(sta) || !sta->uploaded ||
-	    !test_sta_flag(sta, WLAN_STA_AUTHORIZED) ||
-	    sdata->control_port_protocol == ehdr->h_proto))
+	    (!test_sta_flag(sta, WLAN_STA_AUTHORIZED) && !is_eapol) ||
+	    (is_eapol && !(sdata->vif.offload_flags & IEEE80211_OFFLOAD_ENCAP_ENABLED))))
 		goto skip_offload;
 
 	key = rcu_dereference(sta->ptk[sta->ptk_idx]);
@@ -6252,7 +6254,10 @@ int ieee80211_tx_control_port(struct wiphy *wiphy, struct net_device *dev,
 
 start_xmit:
 	local_bh_disable();
-	__ieee80211_subif_start_xmit(skb, skb->dev, flags, ctrl_flags, cookie);
+	if (sdata->vif.offload_flags & IEEE80211_OFFLOAD_ENCAP_ENABLED)
+		ieee80211_subif_start_xmit_8023(skb, skb->dev);
+	else
+		__ieee80211_subif_start_xmit(skb, skb->dev, flags, ctrl_flags, cookie);
 	local_bh_enable();
 
 	return 0;
