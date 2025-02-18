@@ -8768,8 +8768,9 @@ static void ath12k_mac_update_vif_offload(struct ath12k_link_vif *arvif)
 	int ret;
 
 	param_id = WMI_VDEV_PARAM_TX_ENCAP_TYPE;
-	if (vif->type != NL80211_IFTYPE_STATION &&
-	    vif->type != NL80211_IFTYPE_AP)
+	if (ath12k_frame_mode != ATH12K_HW_TXRX_ETHERNET ||
+	    (vif->type != NL80211_IFTYPE_STATION &&
+	     vif->type != NL80211_IFTYPE_AP))
 		vif->offload_flags &= ~(IEEE80211_OFFLOAD_ENCAP_ENABLED |
 					IEEE80211_OFFLOAD_DECAP_ENABLED);
 
@@ -12329,6 +12330,10 @@ static int ath12k_mac_hw_register(struct ath12k_hw *ah)
 	ieee80211_hw_set(hw, SUPPORTS_TX_FRAG);
 	ieee80211_hw_set(hw, REPORTS_LOW_ACK);
 	ieee80211_hw_set(hw, WANT_MONITOR_VIF);
+	if (ath12k_frame_mode == ATH12K_HW_TXRX_ETHERNET) {
+		ieee80211_hw_set(hw, SUPPORTS_TX_ENCAP_OFFLOAD);
+		ieee80211_hw_set(hw, SUPPORTS_RX_DECAP_OFFLOAD);
+	}
 
 	if (cap->nss_ratio_enabled)
 		ieee80211_hw_set(hw, SUPPORTS_VHT_EXT_NSS_BW);
