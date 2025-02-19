@@ -8148,7 +8148,7 @@ static void ath12k_mac_op_tx(struct ieee80211_hw *hw,
 	struct ath12k *ar, *tmp_ar;
 	struct ath12k_peer *peer;
 	unsigned long links_map;
-	bool is_mcast = false;
+	bool is_mcast = false, is_eth = false;
 	bool is_dvlan = false;
 	struct ethhdr *eth;
 	bool is_prb_rsp;
@@ -8196,7 +8196,7 @@ static void ath12k_mac_op_tx(struct ieee80211_hw *hw,
 	if (info_flags & IEEE80211_TX_CTL_HW_80211_ENCAP) {
 		eth = (struct ethhdr *)skb->data;
 		is_mcast = is_multicast_ether_addr(eth->h_dest);
-
+		is_eth = true;
 		skb_cb->flags |= ATH12K_SKB_HW_80211_ENCAP;
 	} else if (ieee80211_is_mgmt(hdr->frame_control)) {
 		ret = ath12k_mac_mgmt_tx(ar, skb, is_prb_rsp);
@@ -8222,7 +8222,7 @@ static void ath12k_mac_op_tx(struct ieee80211_hw *hw,
 	    ieee80211_has_protected(hdr->frame_control))
 		is_dvlan = true;
 
-	if (!vif->valid_links || !is_mcast || is_dvlan ||
+	if (!vif->valid_links || !is_mcast || is_dvlan || is_eth ||
 	    test_bit(ATH12K_FLAG_RAW_MODE, &ar->ab->dev_flags)) {
 		ret = ath12k_dp_tx(ar, arvif, skb, false, 0, is_mcast);
 		if (unlikely(ret)) {
