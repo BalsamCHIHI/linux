@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-3-Clause-Clear */
 /*
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef ATH12K_QMI_H
@@ -36,11 +36,15 @@
 
 #define QMI_WLANFW_MAX_DATA_SIZE_V01		6144
 #define ATH12K_FIRMWARE_MODE_OFF		4
-#define ATH12K_QMI_TARGET_MEM_MODE_DEFAULT	0
 
 #define ATH12K_BOARD_ID_DEFAULT	0xFF
 
 struct ath12k_base;
+
+enum ath12k_target_mem_mode {
+	ATH12K_QMI_TARGET_MEM_MODE_DEFAULT = 0,
+	ATH12K_QMI_TARGET_MEM_MODE_512M,
+};
 
 enum ath12k_qmi_file_type {
 	ATH12K_QMI_FILE_TYPE_BDF_GOLDEN	= 0,
