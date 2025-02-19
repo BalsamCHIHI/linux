@@ -52,3 +52,35 @@ config ATH12K_COREDUMP
 
 	  If unsure, say Y to make it easier to debug problems. But if
 	  dump collection not required choose N.
+
+choice
+	prompt "Memory profile"
+	depends on ATH12K
+	default ATH12K_MEM_PROFILE_DEFAULT
+	help
+	  Allows to select the memory profile
+
+	  By enabling this option, can choose between different memory
+	  profiles, such as the default profile or a 512 MB profile.
+
+config ATH12K_MEM_PROFILE_DEFAULT
+	bool "ath12k default memory profile"
+	depends on ATH12K
+	help
+	  Enables the default memory profile
+
+	  This profile is recommended when memory is not constraint or
+	  if unsure which profile to choose.
+
+config ATH12K_MEM_PROFILE_512M
+	bool "ath12k enable 512MB memory profile"
+	depends on ATH12K
+	help
+	  Enables the 512MB memory profile
+
+	  Selecting this option reduces memory allocation to the firmware,
+	  decreases the number of transmit and receive descriptors, and
+	  limits the monitor ring and the number of virtual devices
+	  (vdevs).
+
+endchoice
