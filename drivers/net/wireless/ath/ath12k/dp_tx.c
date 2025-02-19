@@ -244,6 +244,7 @@ int ath12k_dp_tx(struct ath12k *ar, struct ath12k_link_vif *arvif,
 	bool msdu_ext_desc = false;
 	bool add_htt_metadata = false;
 	u32 iova_mask = ab->hw_params->iova_mask;
+	bool is_diff_encap = false, is_null = false;
 
 	if (test_bit(ATH12K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags))
 		return -ESHUTDOWN;
@@ -331,10 +332,14 @@ tcl_ring_sel:
 	ti.flags1 |= u32_encode_bits(1, HAL_TCL_DATA_CMD_INFO3_TID_OVERWRITE);
 
 	ti.tid = ath12k_dp_tx_get_tid(skb);
-
 	switch (ti.encap_type) {
 	case HAL_TCL_ENCAP_TYPE_NATIVE_WIFI:
-		ath12k_dp_tx_encap_nwifi(skb);
+		is_null = ieee80211_is_nullfunc(hdr->frame_control);
+		if ((ahvif->vif->offload_flags & IEEE80211_OFFLOAD_ENCAP_ENABLED) &&
+		    (skb->protocol == cpu_to_be16(ETH_P_PAE) || is_null))
+			is_diff_encap = true;
+		else
+			ath12k_dp_tx_encap_nwifi(skb);
 		break;
 	case HAL_TCL_ENCAP_TYPE_RAW:
 		if (!test_bit(ATH12K_FLAG_RAW_MODE, &ab->dev_flags)) {
@@ -351,6 +356,15 @@ tcl_ring_sel:
 		ret = -EINVAL;
 		atomic_inc(&ab->soc_stats.tx_err.misc_fail);
 		goto fail_remove_tx_buf;
+	}
+
+	if (unlikely(ahvif->tx_encap_type == HAL_TCL_ENCAP_TYPE_ETHERNET &&
+		     !(skb_cb->flags & ATH12K_SKB_HW_80211_ENCAP))) {
+		msdu_ext_desc = true;
+		if (skb->protocol == cpu_to_be16(ETH_P_PAE)) {
+			ti.encap_type = HAL_TCL_ENCAP_TYPE_RAW;
+			ti.encrypt_type = HAL_ENCRYPT_TYPE_OPEN;
+		}
 	}
 
 	if (iova_mask &&
@@ -378,13 +392,15 @@ map:
 		goto fail_remove_tx_buf;
 	}
 
-	if (!test_bit(ATH12K_FLAG_HW_CRYPTO_DISABLED, &ar->ab->dev_flags) &&
-	    !(skb_cb->flags & ATH12K_SKB_HW_80211_ENCAP) &&
-	    !(skb_cb->flags & ATH12K_SKB_CIPHER_SET) &&
-	    ieee80211_has_protected(hdr->frame_control)) {
+	if ((!test_bit(ATH12K_FLAG_HW_CRYPTO_DISABLED, &ar->ab->dev_flags) &&
+	     !(skb_cb->flags & ATH12K_SKB_HW_80211_ENCAP) &&
+	     !(skb_cb->flags & ATH12K_SKB_CIPHER_SET) &&
+	     ieee80211_has_protected(hdr->frame_control)) ||
+	     is_diff_encap) {
 		/* Add metadata for sw encrypted vlan group traffic */
 		add_htt_metadata = true;
 		msdu_ext_desc = true;
+		ti.meta_data_flags |= HTT_TCL_META_DATA_VALID_HTT;
 		ti.flags0 |= u32_encode_bits(1, HAL_TCL_DATA_CMD_INFO2_TO_FW);
 		ti.meta_data_flags |= HTT_TCL_META_DATA_VALID_HTT;
 		ti.encap_type = HAL_TCL_ENCAP_TYPE_RAW;
