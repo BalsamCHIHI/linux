@@ -84,6 +84,7 @@ static void ath12k_dp_tx_release_txbuf(struct ath12k_dp *dp,
 				       u8 pool_id)
 {
 	spin_lock_bh(&dp->tx_desc_lock[pool_id]);
+	tx_desc->skb_ext_desc = NULL;
 	list_move_tail(&tx_desc->list, &dp->tx_desc_free_list[pool_id]);
 	spin_unlock_bh(&dp->tx_desc_lock[pool_id]);
 }
@@ -448,6 +449,7 @@ map:
 		ti.type = HAL_TCL_DESC_TYPE_EXT_DESC;
 
 		skb_cb->paddr_ext_desc = ti.paddr;
+		tx_desc->skb_ext_desc = skb_ext_desc;
 	}
 
 	hal_ring_id = tx_ring->tcl_data_ring.ring_id;
@@ -532,7 +534,8 @@ fail_remove_tx_buf:
 
 static void ath12k_dp_tx_free_txbuf(struct ath12k_base *ab,
 				    struct sk_buff *msdu, u8 mac_id,
-				    struct dp_tx_ring *tx_ring)
+				    struct dp_tx_ring *tx_ring,
+				    struct sk_buff *skb_ext_desc)
 {
 	struct ath12k *ar;
 	struct ath12k_skb_cb *skb_cb;
@@ -542,9 +545,11 @@ static void ath12k_dp_tx_free_txbuf(struct ath12k_base *ab,
 	ar = ab->pdevs[pdev_id].ar;
 
 	dma_unmap_single(ab->dev, skb_cb->paddr, msdu->len, DMA_TO_DEVICE);
-	if (skb_cb->paddr_ext_desc)
+	if (skb_cb->paddr_ext_desc) {
 		dma_unmap_single(ab->dev, skb_cb->paddr_ext_desc,
 				 sizeof(struct hal_tx_msdu_ext_desc), DMA_TO_DEVICE);
+		dev_kfree_skb_any(skb_ext_desc);
+	}
 
 	ieee80211_free_txskb(ar->ah->hw, msdu);
 
@@ -557,6 +562,7 @@ ath12k_dp_tx_htt_tx_complete_buf(struct ath12k_base *ab,
 				 struct sk_buff *msdu,
 				 struct dp_tx_ring *tx_ring,
 				 struct ath12k_dp_htt_wbm_tx_status *ts,
+				 struct sk_buff *skb_ext_desc,
 				 u16 peer_id)
 {
 	struct ieee80211_tx_status status = { 0 };
@@ -577,9 +583,11 @@ ath12k_dp_tx_htt_tx_complete_buf(struct ath12k_base *ab,
 		wake_up(&ar->dp.tx_empty_waitq);
 
 	dma_unmap_single(ab->dev, skb_cb->paddr, msdu->len, DMA_TO_DEVICE);
-	if (skb_cb->paddr_ext_desc)
+	if (skb_cb->paddr_ext_desc) {
 		dma_unmap_single(ab->dev, skb_cb->paddr_ext_desc,
 				 sizeof(struct hal_tx_msdu_ext_desc), DMA_TO_DEVICE);
+		dev_kfree_skb_any(skb_ext_desc);
+	}
 
 	vif = skb_cb->vif;
 	if (vif) {
@@ -629,7 +637,8 @@ static void
 ath12k_dp_tx_process_htt_tx_complete(struct ath12k_base *ab,
 				     void *desc, u8 mac_id,
 				     struct sk_buff *msdu,
-				     struct dp_tx_ring *tx_ring)
+				     struct dp_tx_ring *tx_ring,
+				     struct sk_buff *skb_ext_desc)
 {
 	struct htt_tx_wbm_completion *status_desc;
 	struct ath12k_dp_htt_wbm_tx_status ts = {0};
@@ -651,11 +660,12 @@ ath12k_dp_tx_process_htt_tx_complete(struct ath12k_base *ab,
 		peer_id = le32_get_bits(((struct hal_wbm_completion_ring_tx *)desc)->
 				info3, HAL_WBM_COMPL_TX_INFO3_PEER_ID);
 
-		ath12k_dp_tx_htt_tx_complete_buf(ab, msdu, tx_ring, &ts, peer_id);
+		ath12k_dp_tx_htt_tx_complete_buf(ab, msdu, tx_ring, &ts, skb_ext_desc,
+						 peer_id);
 		break;
 	case HAL_WBM_REL_HTT_TX_COMP_STATUS_REINJ:
 	case HAL_WBM_REL_HTT_TX_COMP_STATUS_INSPECT:
-		ath12k_dp_tx_free_txbuf(ab, msdu, mac_id, tx_ring);
+		ath12k_dp_tx_free_txbuf(ab, msdu, mac_id, tx_ring, skb_ext_desc);
 		break;
 	case HAL_WBM_REL_HTT_TX_COMP_STATUS_MEC_NOTIFY:
 		/* This event is to be handled only when the driver decides to
@@ -788,7 +798,8 @@ static void ath12k_dp_tx_update_txcompl(struct ath12k *ar, struct hal_tx_status 
 
 static void ath12k_dp_tx_complete_msdu(struct ath12k *ar,
 				       struct sk_buff *msdu,
-				       struct hal_tx_status *ts)
+				       struct hal_tx_status *ts,
+				       struct sk_buff *skb_ext_desc)
 {
 	struct ieee80211_tx_status status = { 0 };
 	struct ath12k_base *ab = ar->ab;
@@ -808,9 +819,11 @@ static void ath12k_dp_tx_complete_msdu(struct ath12k *ar,
 	skb_cb = ATH12K_SKB_CB(msdu);
 
 	dma_unmap_single(ab->dev, skb_cb->paddr, msdu->len, DMA_TO_DEVICE);
-	if (skb_cb->paddr_ext_desc)
+	if (skb_cb->paddr_ext_desc) {
 		dma_unmap_single(ab->dev, skb_cb->paddr_ext_desc,
 				 sizeof(struct hal_tx_msdu_ext_desc), DMA_TO_DEVICE);
+		dev_kfree_skb_any(skb_ext_desc);
+	}
 
 	rcu_read_lock();
 
@@ -943,7 +956,7 @@ void ath12k_dp_tx_completion_handler(struct ath12k_base *ab, int ring_id)
 	int hal_ring_id = dp->tx_ring[ring_id].tcl_comp_ring.ring_id;
 	struct hal_srng *status_ring = &ab->hal.srng_list[hal_ring_id];
 	struct ath12k_tx_desc_info *tx_desc = NULL;
-	struct sk_buff *msdu;
+	struct sk_buff *msdu, *skb_ext_desc;
 	struct hal_tx_status ts = { 0 };
 	struct dp_tx_ring *tx_ring = &dp->tx_ring[ring_id];
 	struct hal_wbm_release_ring *desc;
@@ -1003,6 +1016,7 @@ void ath12k_dp_tx_completion_handler(struct ath12k_base *ab, int ring_id)
 
 		msdu = tx_desc->skb;
 		mac_id = tx_desc->mac_id;
+		skb_ext_desc = tx_desc->skb_ext_desc;
 
 		/* Release descriptor as soon as extracting necessary info
 		 * to reduce contention
@@ -1012,7 +1026,7 @@ void ath12k_dp_tx_completion_handler(struct ath12k_base *ab, int ring_id)
 			ath12k_dp_tx_process_htt_tx_complete(ab,
 							     (void *)tx_status,
 							     mac_id, msdu,
-							     tx_ring);
+							     tx_ring, skb_ext_desc);
 			continue;
 		}
 
@@ -1022,7 +1036,7 @@ void ath12k_dp_tx_completion_handler(struct ath12k_base *ab, int ring_id)
 		if (atomic_dec_and_test(&ar->dp.num_tx_pending))
 			wake_up(&ar->dp.tx_empty_waitq);
 
-		ath12k_dp_tx_complete_msdu(ar, msdu, &ts);
+		ath12k_dp_tx_complete_msdu(ar, msdu, &ts, skb_ext_desc);
 	}
 }
 
