@@ -159,6 +159,14 @@ ieee80211_he_cap_ie_to_sta_he_cap(struct ieee80211_sub_if_data *sdata,
 		       &he_cap_ie[sizeof(he_cap->he_cap_elem) + mcs_nss_size],
 		       he_ppe_size);
 
+	/* Check if STA supports at least single spatial stream */
+	if (he_cap->he_mcs_nss_supp.rx_mcs_80 == cpu_to_le16(0xFFFF)) {
+		he_cap->has_he = false;
+		sdata_info(sdata, "Ignoring HE IE from %pM due to invalid rx_mcs_80\n",
+			   link_sta->pub->addr);
+		return;
+	}
+
 	he_cap->has_he = true;
 
 	link_sta->cur_max_bandwidth = ieee80211_sta_cap_rx_bw(link_sta);
