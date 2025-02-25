@@ -3881,7 +3881,9 @@ static void ath12k_recalculate_mgmt_rate(struct ath12k *ar,
 	}
 
 	sband = hw->wiphy->bands[def->chan->band];
-	basic_rate_idx = ffs(bss_conf->basic_rates) - 1;
+	basic_rate_idx = ffs(bss_conf->basic_rates);
+	if (basic_rate_idx)
+		basic_rate_idx -= 1;
 	bitrate = sband->bitrates[basic_rate_idx].bitrate;
 
 	hw_rate_code = ath12k_mac_get_rate_hw_value(bitrate);
@@ -4426,10 +4428,13 @@ static void ath12k_mac_bss_info_changed(struct ath12k *ar,
 		band = def.chan->band;
 		mcast_rate = info->mcast_rate[band];
 
-		if (mcast_rate > 0)
+		if (mcast_rate > 0) {
 			rateidx = mcast_rate - 1;
-		else
-			rateidx = ffs(info->basic_rates) - 1;
+		} else {
+			rateidx = ffs(info->basic_rates);
+			if (rateidx)
+				rateidx -= 1;
+		}
 
 		if (ar->pdev->cap.supported_bands & WMI_HOST_WLAN_5GHZ_CAP)
 			rateidx += ATH12K_MAC_FIRST_OFDM_RATE_IDX;
@@ -6125,7 +6130,9 @@ static void ath12k_mac_dec_num_stations(struct ath12k_link_vif *arvif,
 	if (arvif->ahvif->vdev_type == WMI_VDEV_TYPE_STA && !sta->tdls)
 		return;
 
-	ar->num_stations--;
+	WARN_ON(!ar->num_stations);
+	if (ar->num_stations)
+		ar->num_stations--;
 }
 
 static void ath12k_mac_station_post_remove(struct ath12k *ar,
@@ -8375,7 +8382,7 @@ static int ath12k_mac_start(struct ath12k *ar)
 					1, pdev->pdev_id);
 
 	if (ret) {
-		ath12k_err(ab, "failed to enable PMF QOS: (%d\n", ret);
+		ath12k_err(ab, "failed to enable PMF QOS: (%d)\n", ret);
 		goto err;
 	}
 
