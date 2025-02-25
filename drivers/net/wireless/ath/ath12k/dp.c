@@ -344,7 +344,7 @@ u32 ath12k_dp_tx_get_vdev_bank_config(struct ath12k_base *ab,
 	if (ahvif->tx_encap_type == HAL_TCL_ENCAP_TYPE_RAW &&
 	    test_bit(ATH12K_FLAG_HW_CRYPTO_DISABLED, &ab->dev_flags))
 		bank_config |=
-			u32_encode_bits(ath12k_dp_tx_get_encrypt_type(ahvif->key_cipher),
+			u32_encode_bits(ath12k_dp_tx_get_encrypt_type(arvif->key_cipher),
 					HAL_TX_BANK_CONFIG_ENCRYPT_TYPE);
 
 	bank_config |= u32_encode_bits(ahvif->tx_encap_type,
