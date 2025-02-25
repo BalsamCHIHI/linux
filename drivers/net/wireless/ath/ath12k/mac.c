@@ -5281,8 +5281,6 @@ static int ath12k_install_key(struct ath12k_link_vif *arvif,
 		.key_flags = flags,
 		.macaddr = macaddr,
 	};
-	struct ath12k_vif *ahvif = arvif->ahvif;
-	struct ieee80211_vif *vif = ath12k_ahvif_to_vif(ahvif);
 
 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
 
@@ -5334,8 +5332,8 @@ install:
 	if (!wait_for_completion_timeout(&ar->install_key_done, 1 * HZ))
 		return -ETIMEDOUT;
 
-	if (ether_addr_equal(macaddr, vif->addr))
-		ahvif->key_cipher = key->cipher;
+	if (ether_addr_equal(macaddr, arvif->bssid))
+		arvif->key_cipher = key->cipher;
 
 	return ar->install_key_status ? -EINVAL : 0;
 }
@@ -8266,7 +8264,7 @@ static void ath12k_mac_op_tx(struct ieee80211_hw *hw,
 			skb_cb->link_id = link_id;
 
 			/* For open mode, skip peer find logic */
-			if (unlikely(ahvif->key_cipher == WMI_CIPHER_NONE))
+			if (unlikely(arvif->key_cipher == WMI_CIPHER_NONE))
 				goto skip_peer_find;
 
 			spin_lock_bh(&tmp_ar->ab->base_lock);
@@ -11217,7 +11215,7 @@ ath12k_mac_op_reconfig_complete(struct ieee80211_hw *hw,
 			ahvif = arvif->ahvif;
 			ath12k_dbg(ab, ATH12K_DBG_BOOT,
 				   "reconfig cipher %d up %d vdev type %d\n",
-				   ahvif->key_cipher,
+				   arvif->key_cipher,
 				   arvif->is_up,
 				   ahvif->vdev_type);
 
