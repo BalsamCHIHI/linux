@@ -3369,14 +3369,14 @@ ath12k_dp_mon_rx_update_user_stats(struct ath12k *ar,
 	struct ath12k_peer *peer;
 	u32 num_msdu;
 
-	if (user_stats->ast_index == 0 || user_stats->ast_index == 0xFFFF)
+	if (ppdu_info->peer_id == HAL_INVALID_PEERID)
 		return;
 
-	peer = ath12k_peer_find_by_ast(ar->ab, user_stats->ast_index);
+	peer = ath12k_peer_find_by_id(ar->ab, ppdu_info->peer_id);
 
 	if (!peer) {
-		ath12k_warn(ar->ab, "peer ast idx %d can't be found\n",
-			    user_stats->ast_index);
+		ath12k_warn(ar->ab, "peer with peer id %d can't be found\n",
+			    ppdu_info->peer_id);
 		return;
 	}
 
