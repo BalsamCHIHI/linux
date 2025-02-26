@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 /*
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "core.h"
@@ -124,20 +124,6 @@ bool ath12k_peer_exist_by_vdev_id(struct ath12k_base *ab, int vdev_id)
 	}
 	spin_unlock_bh(&ab->base_lock);
 	return false;
-}
-
-struct ath12k_peer *ath12k_peer_find_by_ast(struct ath12k_base *ab,
-					    int ast_hash)
-{
-	struct ath12k_peer *peer;
-
-	lockdep_assert_held(&ab->base_lock);
-
-	list_for_each_entry(peer, &ab->peers, list)
-		if (ast_hash == peer->ast_hash)
-			return peer;
-
-	return NULL;
 }
 
 void ath12k_peer_unmap_event(struct ath12k_base *ab, u16 peer_id)
