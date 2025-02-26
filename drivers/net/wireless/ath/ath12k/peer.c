@@ -126,20 +126,6 @@ bool ath12k_peer_exist_by_vdev_id(struct ath12k_base *ab, int vdev_id)
 	return false;
 }
 
-struct ath12k_peer *ath12k_peer_find_by_ast(struct ath12k_base *ab,
-					    int ast_hash)
-{
-	struct ath12k_peer *peer;
-
-	lockdep_assert_held(&ab->base_lock);
-
-	list_for_each_entry(peer, &ab->peers, list)
-		if (ast_hash == peer->ast_hash)
-			return peer;
-
-	return NULL;
-}
-
 void ath12k_peer_unmap_event(struct ath12k_base *ab, u16 peer_id)
 {
 	struct ath12k_peer *peer;
