@@ -4243,6 +4243,9 @@ static void ath12k_mac_bss_info_changed(struct ath12k *ar,
 
 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
 
+	if (unlikely(test_bit(ATH12K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags)))
+		return;
+
 	if (changed & BSS_CHANGED_BEACON_INT) {
 		arvif->beacon_interval = info->beacon_int;
 
@@ -5050,6 +5053,9 @@ static int ath12k_mac_initiate_hw_scan(struct ieee80211_hw *hw,
 	u8 n_channels = to_index - from_index;
 
 	lockdep_assert_wiphy(hw->wiphy);
+
+	if (unlikely(test_bit(ATH12K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags)))
+		return -ESHUTDOWN;
 
 	arvif = &ahvif->deflink;
 
@@ -6438,6 +6444,9 @@ static int ath12k_mac_handle_link_sta_state(struct ieee80211_hw *hw,
 	int ret = 0;
 
 	lockdep_assert_wiphy(hw->wiphy);
+
+	if (unlikely(test_bit(ATH12K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags)))
+		return -ESHUTDOWN;
 
 	ath12k_dbg(ar->ab, ATH12K_DBG_MAC, "mac handle link %u sta %pM state %d -> %d\n",
 		   arsta->link_id, arsta->addr, old_state, new_state);
@@ -9517,6 +9526,9 @@ static int ath12k_mac_ampdu_action(struct ieee80211_hw *hw,
 	if (!ar)
 		return -EINVAL;
 
+	if (unlikely(test_bit(ATH12K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags)))
+		return -ESHUTDOWN;
+
 	switch (params->action) {
 	case IEEE80211_AMPDU_RX_START:
 		ret = ath12k_dp_rx_ampdu_start(ar, params, link_id);
@@ -10334,6 +10346,9 @@ ath12k_mac_op_unassign_vif_chanctx(struct ieee80211_hw *hw,
 
 	ar = arvif->ar;
 	ab = ar->ab;
+
+	if (unlikely(test_bit(ATH12K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags)))
+		return;
 
 	ath12k_dbg(ab, ATH12K_DBG_MAC,
 		   "mac chanctx unassign ptr %p vdev_id %i\n",
