@@ -1874,7 +1874,6 @@ static void ath12k_mac_handle_beacon_iter(void *data, u8 *mac,
 	struct sk_buff *skb = data;
 	struct ieee80211_mgmt *mgmt = (void *)skb->data;
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
-	struct ath12k_link_vif *arvif = &ahvif->deflink;
 
 	if (vif->type != NL80211_IFTYPE_STATION)
 		return;
@@ -1882,7 +1881,7 @@ static void ath12k_mac_handle_beacon_iter(void *data, u8 *mac,
 	if (!ether_addr_equal(mgmt->bssid, vif->bss_conf.bssid))
 		return;
 
-	cancel_delayed_work(&arvif->connection_loss_work);
+	cancel_delayed_work(&ahvif->deflink.connection_loss_work);
 }
 
 void ath12k_mac_handle_beacon(struct ath12k *ar, struct sk_buff *skb)
@@ -1898,14 +1897,13 @@ static void ath12k_mac_handle_beacon_miss_iter(void *data, u8 *mac,
 {
 	u32 *vdev_id = data;
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
-	struct ath12k_link_vif *arvif = &ahvif->deflink;
-	struct ath12k *ar = arvif->ar;
+	struct ath12k *ar = ahvif->deflink.ar;
 	struct ieee80211_hw *hw = ath12k_ar_to_hw(ar);
 
-	if (arvif->vdev_id != *vdev_id)
+	if (ahvif->deflink.vdev_id != *vdev_id)
 		return;
 
-	if (!arvif->is_up)
+	if (!ahvif->deflink.is_up)
 		return;
 
 	ieee80211_beacon_loss(vif);
@@ -1915,7 +1913,7 @@ static void ath12k_mac_handle_beacon_miss_iter(void *data, u8 *mac,
 	 * doesn't make sense to continue operation. Queue connection loss work
 	 * which can be cancelled when beacon is received.
 	 */
-	ieee80211_queue_delayed_work(hw, &arvif->connection_loss_work,
+	ieee80211_queue_delayed_work(hw, &ahvif->deflink.connection_loss_work,
 				     ATH12K_CONNECTION_LOSS_HZ);
 }
 
@@ -3813,6 +3811,7 @@ static void ath12k_bss_assoc(struct ath12k *ar,
 static void ath12k_bss_disassoc(struct ath12k *ar,
 				struct ath12k_link_vif *arvif)
 {
+	struct ath12k_vif *ahvif = arvif->ahvif;
 	int ret;
 
 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
@@ -3829,7 +3828,7 @@ static void ath12k_bss_disassoc(struct ath12k *ar,
 
 	memset(&arvif->rekey_data, 0, sizeof(arvif->rekey_data));
 
-	cancel_delayed_work(&arvif->connection_loss_work);
+	cancel_delayed_work(&ahvif->deflink.connection_loss_work);
 }
 
 static u32 ath12k_mac_get_rate_hw_value(int bitrate)
@@ -3932,7 +3931,7 @@ static void ath12k_mac_init_arvif(struct ath12k_vif *ahvif,
 	spin_lock_init(&arvif->link_stats_lock);
 
 	INIT_LIST_HEAD(&arvif->list);
-	INIT_DELAYED_WORK(&arvif->connection_loss_work,
+	INIT_DELAYED_WORK(&ahvif->deflink.connection_loss_work,
 			  ath12k_mac_vif_sta_connection_loss_work);
 
 	for (i = 0; i < ARRAY_SIZE(arvif->bitrate_mask.control); i++) {
@@ -3968,7 +3967,7 @@ static void ath12k_mac_remove_link_interface(struct ieee80211_hw *hw,
 
 	lockdep_assert_wiphy(ah->hw->wiphy);
 
-	cancel_delayed_work_sync(&arvif->connection_loss_work);
+	cancel_delayed_work_sync(&ahvif->deflink.connection_loss_work);
 
 	ath12k_dbg(ar->ab, ATH12K_DBG_MAC, "mac remove link interface (vdev %d link id %d)",
 		   arvif->vdev_id, arvif->link_id);
