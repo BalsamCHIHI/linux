@@ -234,6 +234,7 @@ struct ath12k_hw_params {
 	bool supports_dynamic_smps_6ghz;
 
 	u32 iova_mask;
+	bool handle_beacon_miss;
 };
 
 struct ath12k_hw_ops {
