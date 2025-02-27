@@ -4592,7 +4592,20 @@ static bool ieee80211_tx_8023(struct ieee80211_sub_if_data *sdata,
 {
 	struct ieee80211_local *local = sdata->local;
 	struct sk_buff *next;
-	bool ret = true;
+	struct ieee80211_tx_control control = {};
+	struct ieee80211_sta *pubsta = NULL;
+	struct ethhdr *ehdr = (struct ethhdr *)skb->data;
+	bool ret = true, is_eapol;
+
+	is_eapol = (sdata->control_port_protocol == ehdr->h_proto);
+	if (sta && is_eapol) {
+		if (sta->uploaded)
+			pubsta = &sta->sta;
+
+		control.sta = pubsta;
+		drv_tx(local, &control, skb);
+		return ret;
+	}
 
 	if (ieee80211_queue_skb(local, sdata, sta, skb))
 		return true;
