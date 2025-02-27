@@ -5318,6 +5318,12 @@ static void __ieee80211_rx_handle_packet(struct ieee80211_hw *hw,
 	prev = NULL;
 
 	list_for_each_entry_rcu(sdata, &local->interfaces, list) {
+		unsigned int link_id;
+		struct ieee80211_bss_conf *bss_conf;
+		struct ieee80211_chanctx_conf *conf;
+		unsigned long valid_links = sdata->vif.valid_links;
+		bool flag = false;
+
 		if (!ieee80211_sdata_running(sdata))
 			continue;
 
@@ -5325,28 +5331,87 @@ static void __ieee80211_rx_handle_packet(struct ieee80211_hw *hw,
 		    sdata->vif.type == NL80211_IFTYPE_AP_VLAN)
 			continue;
 
+		if (valid_links) {
+			for_each_set_bit(link_id, &valid_links,
+					 IEEE80211_MLD_MAX_NUM_LINKS) {
+				bss_conf = rcu_dereference(sdata->vif.link_conf[link_id]);
+				if (bss_conf) {
+					conf = rcu_dereference(bss_conf->chanctx_conf);
+					if (conf && conf->def.chan &&
+					    conf->def.chan->center_freq == status->freq) {
+						flag = true;
+						break;
+					}
+				}
+			}
+		} else {
+			bss_conf = &sdata->vif.bss_conf;
+
+			if (bss_conf) {
+				conf = rcu_dereference(bss_conf->chanctx_conf);
+				if (conf && conf->def.chan &&
+				    conf->def.chan->center_freq == status->freq)
+					flag = true;
+			}
+		}
+
 		/*
 		 * frame is destined for this interface, but if it's
 		 * not also for the previous one we handle that after
 		 * the loop to avoid copying the SKB once too much
 		 */
 
-		if (!prev) {
+		if (flag) {
+			if (!prev) {
+				prev = sdata;
+				continue;
+			}
+
+			rx.sdata = prev;
+			ieee80211_rx_for_interface(&rx, skb, false);
+
 			prev = sdata;
-			continue;
 		}
-
-		rx.sdata = prev;
-		ieee80211_rx_for_interface(&rx, skb, false);
-
-		prev = sdata;
 	}
 
 	if (prev) {
-		rx.sdata = prev;
+		unsigned int link_id;
+		struct ieee80211_bss_conf *bss_conf;
+		struct ieee80211_chanctx_conf *conf;
+		unsigned long valid_links = prev->vif.valid_links;
+		bool flag = false;
 
-		if (ieee80211_rx_for_interface(&rx, skb, true))
-			return;
+		if (valid_links) {
+			for_each_set_bit(link_id, &valid_links,
+					 IEEE80211_MLD_MAX_NUM_LINKS) {
+				bss_conf = rcu_dereference(prev->vif.link_conf[link_id]);
+
+				if (bss_conf) {
+					conf = rcu_dereference(bss_conf->chanctx_conf);
+					if (conf && conf->def.chan &&
+					    conf->def.chan->center_freq == status->freq) {
+						flag = true;
+						break;
+					}
+				}
+			}
+		} else {
+			bss_conf = &prev->vif.bss_conf;
+
+			if (bss_conf) {
+				conf = rcu_dereference(bss_conf->chanctx_conf);
+				if (conf && conf->def.chan &&
+				    conf->def.chan->center_freq == status->freq)
+					flag = true;
+			}
+		}
+
+		if (flag) {
+			rx.sdata = prev;
+
+			if (ieee80211_rx_for_interface(&rx, skb, true))
+				return;
+		}
 	}
 
  out:
