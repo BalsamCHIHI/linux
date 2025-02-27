@@ -1899,7 +1899,7 @@ static void ath12k_mac_handle_beacon_miss_iter(void *data, u8 *mac,
 	u32 *vdev_id = data;
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_link_vif *arvif = &ahvif->deflink;
-	struct ath12k *ar = arvif->ar;
+	struct ath12k *ar = ahvif->deflink.ar;
 	struct ieee80211_hw *hw = ath12k_ar_to_hw(ar);
 
 	if (arvif->vdev_id != *vdev_id)
