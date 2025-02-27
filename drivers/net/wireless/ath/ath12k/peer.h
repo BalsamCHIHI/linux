@@ -24,6 +24,7 @@ struct ppdu_user_delayba {
 struct ath12k_peer {
 	struct list_head list;
 	struct ieee80211_sta *sta;
+	struct ieee80211_vif *vif;
 	int vdev_id;
 	u8 addr[ETH_ALEN];
 	int peer_id;

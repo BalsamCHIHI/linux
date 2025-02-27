@@ -5810,6 +5810,8 @@ static int ath12k_pull_peer_sta_kickout_ev(struct ath12k_base *ab, struct sk_buf
 	}
 
 	arg->mac_addr = ev->peer_macaddr.addr;
+	arg->reason = ev->reason;
+	arg->rssi = ev->rssi;
 
 	kfree(tb);
 	return 0;
@@ -6615,6 +6617,7 @@ static void ath12k_peer_sta_kickout_event(struct ath12k_base *ab, struct sk_buff
 	struct wmi_peer_sta_kickout_arg arg = {};
 	struct ieee80211_sta *sta;
 	struct ath12k_peer *peer;
+	struct ath12k_vif *ahvif;
 	struct ath12k *ar;
 
 	if (ath12k_pull_peer_sta_kickout_ev(ab, skb, &arg) != 0) {
@@ -6641,6 +6644,8 @@ static void ath12k_peer_sta_kickout_event(struct ath12k_base *ab, struct sk_buff
 		goto exit;
 	}
 
+	ahvif = ath12k_vif_to_ahvif(peer->vif);
+
 	sta = ieee80211_find_sta_by_ifaddr(ath12k_ar_to_hw(ar),
 					   arg.mac_addr, NULL);
 	if (!sta) {
@@ -6649,10 +6654,15 @@ static void ath12k_peer_sta_kickout_event(struct ath12k_base *ab, struct sk_buff
 		goto exit;
 	}
 
+	if (ar->ab->hw_params->handle_beacon_miss &&
+	    ahvif->vif->type == NL80211_IFTYPE_STATION &&
+	    arg.reason == __cpu_to_le32(WMI_PEER_STA_KICKOUT_REASON_INACTIVITY))
+		ath12k_mac_handle_beacon_miss(ar, peer->vdev_id);
+	else
+		ieee80211_report_low_ack(sta, 10);
+
 	ath12k_dbg(ab, ATH12K_DBG_WMI, "peer sta kickout event %pM",
 		   arg.mac_addr);
-
-	ieee80211_report_low_ack(sta, 10);
 
 exit:
 	spin_unlock_bh(&ab->base_lock);
