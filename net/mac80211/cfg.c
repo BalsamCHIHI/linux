@@ -3569,6 +3569,61 @@ static int ieee80211_set_bitrate_mask(struct wiphy *wiphy,
 	return 0;
 }
 
+static bool
+__ieee80211_is_scan_ongoing(struct wiphy *wiphy,
+			    struct ieee80211_local *local,
+			    struct cfg80211_chan_def *chandef)
+{
+	struct cfg80211_scan_request *scan_req;
+	int chan_radio_idx, req_radio_idx;
+	struct ieee80211_roc_work *roc;
+	bool ret = false;
+
+	if (!list_empty(&local->roc_list) || local->scanning)
+		ret = true;
+
+	if (wiphy->n_radio < 2)
+		return ret;
+
+	/* Multiple HWs are grouped under same wiphy. If not scanning then return
+	 * now itself
+	 */
+	if (!ret)
+		return ret;
+
+	req_radio_idx = cfg80211_get_radio_idx_by_chan(wiphy, chandef->chan);
+	if (req_radio_idx < 0)
+		return true;
+
+	if (local->scanning) {
+		rcu_read_lock();
+		scan_req = rcu_dereference(local->scan_req);
+		/* scanning is going on but info is not there. Should not happen
+		 * but if it does, let's not take risk and assume we can't use
+		 * the hw hence return true
+		 */
+		if (WARN_ON(!scan_req)) {
+			rcu_read_unlock();
+			return true;
+		}
+
+		ret = ieee80211_is_radio_idx_in_scan_req(wiphy, scan_req, req_radio_idx);
+		rcu_read_unlock();
+		return ret;
+	}
+
+	if (!list_empty(&local->roc_list)) {
+		list_for_each_entry(roc, &local->roc_list, list) {
+			chan_radio_idx = cfg80211_get_radio_idx_by_chan(wiphy, roc->chan);
+			if (chan_radio_idx == req_radio_idx)
+				return true;
+		}
+		return false;
+	}
+
+	return false;
+}
+
 static int ieee80211_start_radar_detection(struct wiphy *wiphy,
 					   struct net_device *dev,
 					   struct cfg80211_chan_def *chandef,
@@ -3582,7 +3637,7 @@ static int ieee80211_start_radar_detection(struct wiphy *wiphy,
 
 	lockdep_assert_wiphy(local->hw.wiphy);
 
-	if (!list_empty(&local->roc_list) || local->scanning)
+	if (__ieee80211_is_scan_ongoing(wiphy, local, chandef))
 		return -EBUSY;
 
 	link_data = sdata_dereference(sdata->link[link_id], sdata);
@@ -4074,7 +4129,7 @@ __ieee80211_channel_switch(struct wiphy *wiphy, struct net_device *dev,
 
 	lockdep_assert_wiphy(local->hw.wiphy);
 
-	if (!list_empty(&local->roc_list) || local->scanning)
+	if (__ieee80211_is_scan_ongoing(wiphy, local, &params->chandef))
 		return -EBUSY;
 
 	if (sdata->wdev.links[link_id].cac_started)
