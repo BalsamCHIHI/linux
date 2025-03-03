@@ -644,15 +644,23 @@ ieee80211_find_chanctx(struct ieee80211_local *local,
 	return NULL;
 }
 
-bool ieee80211_is_radar_required(struct ieee80211_local *local)
+bool ieee80211_is_radar_required(struct ieee80211_local *local,
+				 struct cfg80211_scan_request *req)
 {
+	struct wiphy *wiphy = local->hw.wiphy;
 	struct ieee80211_link_data *link;
+	struct ieee80211_channel *chan;
+	int radio_idx;
 
 	lockdep_assert_wiphy(local->hw.wiphy);
 
 	for_each_sdata_link(local, link) {
-		if (link->radar_required)
-			return true;
+		if (link->radar_required) {
+			chan = link->conf->chanreq.oper.chan;
+			radio_idx = cfg80211_get_radio_idx_by_chan(wiphy, chan);
+			return ieee80211_is_radio_idx_in_scan_req(wiphy, req,
+								  radio_idx);
+		}
 	}
 
 	return false;
