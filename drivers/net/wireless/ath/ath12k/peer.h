@@ -63,6 +63,7 @@ struct ath12k_peer {
 
 	/* for reference to ath12k_link_sta */
 	u8 link_id;
+	bool is_reset_mcbc;
 };
 
 struct ath12k_ml_peer {
