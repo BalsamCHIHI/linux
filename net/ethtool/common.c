@@ -6,6 +6,7 @@
 #include <linux/rtnetlink.h>
 #include <linux/ptp_clock_kernel.h>
 #include <linux/phy_link_topology.h>
+#include <net/netdev_queues.h>
 
 #include "netlink.h"
 #include "common.h"
@@ -213,6 +214,24 @@ const char link_mode_names[][ETH_GSTRING_LEN] = {
 	__DEFINE_LINK_MODE_NAME(10, T1S, Half),
 	__DEFINE_LINK_MODE_NAME(10, T1S_P2MP, Half),
 	__DEFINE_LINK_MODE_NAME(10, T1BRR, Full),
+	__DEFINE_LINK_MODE_NAME(200000, CR, Full),
+	__DEFINE_LINK_MODE_NAME(200000, KR, Full),
+	__DEFINE_LINK_MODE_NAME(200000, DR, Full),
+	__DEFINE_LINK_MODE_NAME(200000, DR_2, Full),
+	__DEFINE_LINK_MODE_NAME(200000, SR, Full),
+	__DEFINE_LINK_MODE_NAME(200000, VR, Full),
+	__DEFINE_LINK_MODE_NAME(400000, CR2, Full),
+	__DEFINE_LINK_MODE_NAME(400000, KR2, Full),
+	__DEFINE_LINK_MODE_NAME(400000, DR2, Full),
+	__DEFINE_LINK_MODE_NAME(400000, DR2_2, Full),
+	__DEFINE_LINK_MODE_NAME(400000, SR2, Full),
+	__DEFINE_LINK_MODE_NAME(400000, VR2, Full),
+	__DEFINE_LINK_MODE_NAME(800000, CR4, Full),
+	__DEFINE_LINK_MODE_NAME(800000, KR4, Full),
+	__DEFINE_LINK_MODE_NAME(800000, DR4, Full),
+	__DEFINE_LINK_MODE_NAME(800000, DR4_2, Full),
+	__DEFINE_LINK_MODE_NAME(800000, SR4, Full),
+	__DEFINE_LINK_MODE_NAME(800000, VR4, Full),
 };
 static_assert(ARRAY_SIZE(link_mode_names) == __ETHTOOL_LINK_MODE_MASK_NBITS);
 
@@ -221,8 +240,11 @@ static_assert(ARRAY_SIZE(link_mode_names) == __ETHTOOL_LINK_MODE_MASK_NBITS);
 #define __LINK_MODE_LANES_CR4		4
 #define __LINK_MODE_LANES_CR8		8
 #define __LINK_MODE_LANES_DR		1
+#define __LINK_MODE_LANES_DR_2		1
 #define __LINK_MODE_LANES_DR2		2
+#define __LINK_MODE_LANES_DR2_2		2
 #define __LINK_MODE_LANES_DR4		4
+#define __LINK_MODE_LANES_DR4_2		4
 #define __LINK_MODE_LANES_DR8		8
 #define __LINK_MODE_LANES_KR		1
 #define __LINK_MODE_LANES_KR2		2
@@ -251,6 +273,9 @@ static_assert(ARRAY_SIZE(link_mode_names) == __ETHTOOL_LINK_MODE_MASK_NBITS);
 #define __LINK_MODE_LANES_T1L		1
 #define __LINK_MODE_LANES_T1S		1
 #define __LINK_MODE_LANES_T1S_P2MP	1
+#define __LINK_MODE_LANES_VR		1
+#define __LINK_MODE_LANES_VR2		2
+#define __LINK_MODE_LANES_VR4		4
 #define __LINK_MODE_LANES_VR8		8
 #define __LINK_MODE_LANES_DR8_2		8
 #define __LINK_MODE_LANES_T1BRR		1
@@ -378,6 +403,24 @@ const struct link_mode_info link_mode_params[] = {
 	__DEFINE_LINK_MODE_PARAMS(10, T1S, Half),
 	__DEFINE_LINK_MODE_PARAMS(10, T1S_P2MP, Half),
 	__DEFINE_LINK_MODE_PARAMS(10, T1BRR, Full),
+	__DEFINE_LINK_MODE_PARAMS(200000, CR, Full),
+	__DEFINE_LINK_MODE_PARAMS(200000, KR, Full),
+	__DEFINE_LINK_MODE_PARAMS(200000, DR, Full),
+	__DEFINE_LINK_MODE_PARAMS(200000, DR_2, Full),
+	__DEFINE_LINK_MODE_PARAMS(200000, SR, Full),
+	__DEFINE_LINK_MODE_PARAMS(200000, VR, Full),
+	__DEFINE_LINK_MODE_PARAMS(400000, CR2, Full),
+	__DEFINE_LINK_MODE_PARAMS(400000, KR2, Full),
+	__DEFINE_LINK_MODE_PARAMS(400000, DR2, Full),
+	__DEFINE_LINK_MODE_PARAMS(400000, DR2_2, Full),
+	__DEFINE_LINK_MODE_PARAMS(400000, SR2, Full),
+	__DEFINE_LINK_MODE_PARAMS(400000, VR2, Full),
+	__DEFINE_LINK_MODE_PARAMS(800000, CR4, Full),
+	__DEFINE_LINK_MODE_PARAMS(800000, KR4, Full),
+	__DEFINE_LINK_MODE_PARAMS(800000, DR4, Full),
+	__DEFINE_LINK_MODE_PARAMS(800000, DR4_2, Full),
+	__DEFINE_LINK_MODE_PARAMS(800000, SR4, Full),
+	__DEFINE_LINK_MODE_PARAMS(800000, VR4, Full),
 };
 static_assert(ARRAY_SIZE(link_mode_params) == __ETHTOOL_LINK_MODE_MASK_NBITS);
 
@@ -769,6 +812,21 @@ int ethtool_check_ops(const struct ethtool_ops *ops)
 	 * mean the ops attached to a netdev later on are sane.
 	 */
 	return 0;
+}
+
+void ethtool_ringparam_get_cfg(struct net_device *dev,
+			       struct ethtool_ringparam *param,
+			       struct kernel_ethtool_ringparam *kparam,
+			       struct netlink_ext_ack *extack)
+{
+	memset(param, 0, sizeof(*param));
+	memset(kparam, 0, sizeof(*kparam));
+
+	param->cmd = ETHTOOL_GRINGPARAM;
+	dev->ethtool_ops->get_ringparam(dev, param, kparam, extack);
+
+	/* Driver gives us current state, we want to return current config */
+	kparam->tcp_data_split = dev->cfg->hds_config;
 }
 
 static void ethtool_init_tsinfo(struct kernel_ethtool_ts_info *info)
