@@ -51,7 +51,7 @@ ath12k_reg_notifier(struct wiphy *wiphy, struct regulatory_request *request)
 	struct ath12k_wmi_init_country_arg arg;
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
 	struct ath12k *ar = ath12k_ah_to_ar(ah, 0);
-	int ret, i;
+	int ret, i, j;
 
 	ath12k_dbg(ar->ab, ATH12K_DBG_REG,
 		   "Regulatory Notification received for %s\n", wiphy_name(wiphy));
@@ -87,6 +87,10 @@ ath12k_reg_notifier(struct wiphy *wiphy, struct regulatory_request *request)
 	arg.cc_info.alpha2[2] = 0;
 
 	/* Allow fresh updates to wiphy regd */
+	for_each_ar(ah, ar, i)
+		for (j = 0; j < ar->ab->num_radios; j++)
+			ar->ab->regd_change_user_request[j] = true;
+
 	ah->regd_updated = false;
 
 	/* Send the reg change request to all the radios */
@@ -297,7 +301,7 @@ int ath12k_regd_update(struct ath12k *ar, bool init)
 
 	spin_lock_bh(&ab->base_lock);
 
-	if (init) {
+	if (init && !ab->new_regd[pdev_id]) {
 		/* Apply the regd received during init through
 		 * WMI_REG_CHAN_LIST_CC event. In case of failure to
 		 * receive the regd, initialize with a default world
