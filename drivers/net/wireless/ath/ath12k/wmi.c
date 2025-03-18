@@ -6102,7 +6102,8 @@ static int ath12k_reg_chan_list_event(struct ath12k_base *ab, struct sk_buff *sk
 	}
 
 	spin_lock(&ab->base_lock);
-	if (test_bit(ATH12K_FLAG_REGISTERED, &ab->dev_flags)) {
+	if (ab->default_regd[pdev_idx] &&
+	    ab->regd_change_user_request[pdev_idx]) {
 		/* Once mac is registered, ar is valid and all CC events from
 		 * fw is considered to be received due to user requests
 		 * currently.
@@ -6110,6 +6111,7 @@ static int ath12k_reg_chan_list_event(struct ath12k_base *ab, struct sk_buff *sk
 		 * generated regd to ar. NULL pointer handling will be
 		 * taken care by kfree itself.
 		 */
+		ab->regd_change_user_request[pdev_idx] = false;
 		ar = ab->pdevs[pdev_idx].ar;
 		kfree(ab->new_regd[pdev_idx]);
 		ab->new_regd[pdev_idx] = regd;
