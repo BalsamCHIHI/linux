@@ -1021,6 +1021,7 @@ struct ath12k_base {
 	/* This regd is set during dynamic country setting
 	 * This may or may not be used during the runtime
 	 */
+	bool regd_change_user_request[MAX_RADIOS];
 	struct ieee80211_regdomain *new_regd[MAX_RADIOS];
 	bool regd_freed;
 
