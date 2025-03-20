@@ -9106,7 +9106,8 @@ err_vdev_del:
 	ab->free_vdev_map |= 1LL << arvif->vdev_id;
 	ab->free_vdev_stats_id_map &= ~(1LL << arvif->vdev_stats_id);
 	spin_lock_bh(&ar->data_lock);
-	list_del(&arvif->list);
+	if (!list_empty(&ar->arvifs))
+		list_del(&arvif->list);
 	spin_unlock_bh(&ar->data_lock);
 
 err:
@@ -9387,7 +9388,8 @@ static int ath12k_mac_vdev_delete(struct ath12k *ar, struct ath12k_link_vif *arv
 
 err_vdev_del:
 	spin_lock_bh(&ar->data_lock);
-	list_del(&arvif->list);
+	if (!list_empty(&ar->arvifs))
+		list_del(&arvif->list);
 	spin_unlock_bh(&ar->data_lock);
 
 	ath12k_peer_cleanup(ar, arvif->vdev_id);
