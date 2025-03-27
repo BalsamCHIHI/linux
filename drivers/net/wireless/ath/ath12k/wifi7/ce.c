@@ -8,10 +8,10 @@
 #include <linux/bitops.h>
 #include <linux/bitfield.h>
 
-#include "core.h"
+#include "../core.h"
+#include "../ce.h"
 #include "ce.h"
-#include "ce_wifi7.h"
-#include "dp_rx.h"
+#include "../dp_rx.h"
 
 /* Target firmware's Copy Engine configuration. */
 const struct ce_pipe_config ath12k_target_ce_config_wlan_qcn9274[] = {

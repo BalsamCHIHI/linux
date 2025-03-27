@@ -1181,6 +1181,7 @@ int ath12k_ahb_register_driver(const enum ath12k_device_family device_id,
 
 	return platform_driver_register(ahb_driver);
 }
+EXPORT_SYMBOL(ath12k_ahb_register_driver);
 
 void ath12k_ahb_unregister_driver(const enum ath12k_device_family device_id)
 {
@@ -1196,3 +1197,4 @@ void ath12k_ahb_unregister_driver(const enum ath12k_device_family device_id)
 	platform_driver_unregister(ahb_driver);
 	ath12k_ahb_family_drivers[device_id] = NULL;
 }
+EXPORT_SYMBOL(ath12k_ahb_unregister_driver);
