@@ -13,6 +13,7 @@
 #include "ce.h"
 #include "ce_wifi7.h"
 #include "hw.h"
+#include "hw_wifi7.h"
 #include "mhi.h"
 #include "dp_rx.h"
 #include "wmi_wifi7.h"
@@ -943,7 +944,7 @@ static const struct ath12k_hw_params ath12k_hw_params[] = {
 	},
 };
 
-int ath12k_hw_init(struct ath12k_base *ab)
+int ath12k_wifi7_hw_init(struct ath12k_base *ab)
 {
 	const struct ath12k_hw_params *hw_params = NULL;
 	int i;
@@ -956,13 +957,14 @@ int ath12k_hw_init(struct ath12k_base *ab)
 	}
 
 	if (i == ARRAY_SIZE(ath12k_hw_params)) {
-		ath12k_err(ab, "Unsupported hardware version: 0x%x\n", ab->hw_rev);
+		ath12k_err(ab, "Unsupported WiFi7 hardware version: 0x%x\n",
+			   ab->hw_rev);
 		return -EINVAL;
 	}
 
 	ab->hw_params = hw_params;
 
-	ath12k_info(ab, "Hardware name: %s\n", ab->hw_params->name);
+	ath12k_info(ab, "WiFi7 Hardware name: %s\n", ab->hw_params->name);
 
 	return 0;
 }

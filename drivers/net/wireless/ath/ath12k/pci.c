@@ -15,6 +15,7 @@
 #include "hif.h"
 #include "mhi.h"
 #include "debug.h"
+#include "fw.h"
 
 #define ATH12K_PCI_BAR_NUM		0
 #define ATH12K_PCI_DMA_MASK		32
@@ -1570,9 +1571,7 @@ static int ath12k_pci_probe(struct pci_dev *pdev,
 		goto err_pci_free_region;
 	}
 
-	ret = ath12k_core_pre_init(ab);
-	if (ret)
-		goto err_pci_msi_free;
+	ath12k_fw_map(ab);
 
 	ret = ath12k_pci_set_irq_affinity_hint(ab_pci, cpumask_of(0));
 	if (ret) {
