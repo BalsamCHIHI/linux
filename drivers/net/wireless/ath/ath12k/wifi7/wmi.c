@@ -4,8 +4,8 @@
  * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
-#include "core.h"
-#include "wmi_wifi7.h"
+#include "../core.h"
+#include "wmi.h"
 
 void ath12k_wmi_init_qcn9274(struct ath12k_base *ab,
 			     struct ath12k_wmi_resource_config_arg *config)
