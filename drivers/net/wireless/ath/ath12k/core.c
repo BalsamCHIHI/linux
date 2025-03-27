@@ -20,6 +20,7 @@
 #include "hif.h"
 #include "pci.h"
 #include "wow.h"
+#include "pci_wifi7.h"
 
 static int ahb_err, pci_err;
 unsigned int ath12k_debug_mask;
@@ -2082,7 +2083,7 @@ static int ath12k_init(void)
 	if (ahb_err)
 		pr_warn("Failed to initialize ath12k AHB device: %d\n", ahb_err);
 
-	pci_err = ath12k_pci_init();
+	pci_err = ath12k_wifi7_pci_init();
 	if (pci_err)
 		pr_warn("Failed to initialize ath12k PCI device: %d\n", pci_err);
 
@@ -2093,7 +2094,7 @@ static int ath12k_init(void)
 static void ath12k_exit(void)
 {
 	if (!pci_err)
-		ath12k_pci_exit();
+		ath12k_wifi7_pci_exit();
 
 	if (!ahb_err)
 		ath12k_ahb_exit();

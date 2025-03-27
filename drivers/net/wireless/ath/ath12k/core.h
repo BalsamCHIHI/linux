@@ -903,6 +903,11 @@ struct ath12k_wsi_info {
 	u32 hw_link_id_base;
 };
 
+enum ath12k_device_family {
+	ATH12K_DEVICE_FAMILY_WIFI7,
+	ATH12K_DEVICE_FAMILY_MAX,
+};
+
 /* Master structure to hold the hw data which may be used in core module */
 struct ath12k_base {
 	enum ath12k_hw_rev hw_rev;
