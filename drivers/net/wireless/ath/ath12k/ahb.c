@@ -15,6 +15,7 @@
 #include "ahb.h"
 #include "debug.h"
 #include "hif.h"
+#include "fw.h"
 
 #define ATH12K_IRQ_CE0_OFFSET 4
 #define ATH12K_MAX_UPDS 1
@@ -1057,9 +1058,7 @@ static int ath12k_ahb_probe(struct platform_device *pdev)
 	if (!of_property_read_u32(ab->dev->of_node, "memory-region", &addr))
 		set_bit(ATH12K_FLAG_FIXED_MEM_REGION, &ab->dev_flags);
 
-	ret = ath12k_core_pre_init(ab);
-	if (ret)
-		goto err_core_free;
+	ath12k_fw_map(ab);
 
 	ret = ath12k_ahb_resource_init(ab);
 	if (ret)

@@ -1677,21 +1677,6 @@ static void ath12k_core_reset(struct work_struct *work)
 	mutex_unlock(&ag->mutex);
 }
 
-int ath12k_core_pre_init(struct ath12k_base *ab)
-{
-	int ret;
-
-	ret = ath12k_hw_init(ab);
-	if (ret) {
-		ath12k_err(ab, "failed to init hw params: %d\n", ret);
-		return ret;
-	}
-
-	ath12k_fw_map(ab);
-
-	return 0;
-}
-
 static int ath12k_core_panic_handler(struct notifier_block *nb,
 				     unsigned long action, void *data)
 {
