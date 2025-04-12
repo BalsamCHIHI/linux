@@ -314,6 +314,9 @@ struct ath12k_link_vif {
 	spinlock_t link_stats_lock; /* Protects updates to link_stats */
 
 	u8 current_cntdown_counter;
+
+	/* only used in station mode */
+	bool is_sta_assoc_link;
 };
 
 struct ath12k_vif {
@@ -532,6 +535,12 @@ struct ath12k_link_sta {
 	u8 link_idx;
 };
 
+struct ath12k_reoq_buf {
+	void *vaddr;
+	dma_addr_t paddr_aligned;
+	u32 size;
+};
+
 struct ath12k_sta {
 	struct ath12k_vif *ahvif;
 	enum hal_pn_type pn_type;
@@ -544,6 +553,8 @@ struct ath12k_sta {
 	u8 num_peer;
 
 	enum ieee80211_sta_state state;
+
+	struct ath12k_reoq_buf reoq_bufs[IEEE80211_NUM_TIDS + 1];
 };
 
 #define ATH12K_HALF_20MHZ_BW	10
@@ -1087,6 +1098,7 @@ struct ath12k_base {
 		size_t m3_len;
 
 		DECLARE_BITMAP(fw_features, ATH12K_FW_FEATURE_COUNT);
+		bool fw_features_valid;
 	} fw;
 
 	const struct hal_rx_ops *hal_rx_ops;
@@ -1124,6 +1136,9 @@ struct ath12k_base {
 	enum ath12k_firmware_mode fw_mode;
 	struct ath12k_ftm_event_obj ftm_event_obj;
 	bool hw_group_ref;
+
+	/* Denote whether MLO is possible within the device */
+	bool single_chip_mlo_support;
 
 	/* must be last */
 	u8 drv_priv[] __aligned(sizeof(void *));

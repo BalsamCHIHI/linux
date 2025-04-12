@@ -3477,6 +3477,8 @@ static struct ath12k_link_vif *ath12k_mac_assign_link_vif(struct ath12k_hw *ah,
 		 */
 		if (!ahvif->links_map && link_id != ATH12K_DEFAULT_SCAN_LINK) {
 			arvif = &ahvif->deflink;
+			if (vif->type == NL80211_IFTYPE_STATION)
+				arvif->is_sta_assoc_link = true;
 		} else {
 			arvif = (struct ath12k_link_vif *)
 			kzalloc(sizeof(struct ath12k_link_vif), GFP_KERNEL);
@@ -3612,6 +3614,8 @@ static void ath12k_mac_op_vif_cfg_changed(struct ieee80211_hw *hw,
 	unsigned long links = ahvif->links_map;
 	struct ieee80211_bss_conf *info;
 	struct ath12k_link_vif *arvif;
+	struct ieee80211_sta *sta;
+	struct ath12k_sta *ahsta;
 	struct ath12k *ar;
 	u8 link_id;
 
@@ -3624,6 +3628,35 @@ static void ath12k_mac_op_vif_cfg_changed(struct ieee80211_hw *hw,
 	}
 
 	if (changed & BSS_CHANGED_ASSOC) {
+		if (vif->cfg.assoc) {
+			/* only in station mode we can get here, so it's safe
+			 * to use ap_addr
+			 */
+			rcu_read_lock();
+			sta = ieee80211_find_sta(vif, vif->cfg.ap_addr);
+			if (!sta) {
+				rcu_read_unlock();
+				WARN_ONCE(1, "failed to find sta with addr %pM\n",
+					  vif->cfg.ap_addr);
+				return;
+			}
+
+			ahsta = ath12k_sta_to_ahsta(sta);
+			arvif = wiphy_dereference(hw->wiphy,
+						  ahvif->link[ahsta->assoc_link_id]);
+			rcu_read_unlock();
+
+			ar = arvif->ar;
+			/* there is no reason for which an assoc link's
+			 * bss info does not exist
+			 */
+			info = ath12k_mac_get_link_bss_conf(arvif);
+			ath12k_bss_assoc(ar, arvif, info);
+
+			/* exclude assoc link as it is done above */
+			links &= ~BIT(ahsta->assoc_link_id);
+		}
+
 		for_each_set_bit(link_id, &links, IEEE80211_MLD_MAX_NUM_LINKS) {
 			arvif = wiphy_dereference(hw->wiphy, ahvif->link[link_id]);
 			if (!arvif || !arvif->ar)
@@ -5867,6 +5900,17 @@ static int ath12k_mac_op_sta_state(struct ieee80211_hw *hw,
 		 * link sta
 		 */
 		if (sta->mlo) {
+			/* For station mode, arvif->is_sta_assoc_link has been set when
+			 * vdev starts. Make sure the arvif/arsta pair have same setting
+			 */
+			if (vif->type == NL80211_IFTYPE_STATION &&
+			    !arsta->arvif->is_sta_assoc_link) {
+				ath12k_hw_warn(ah, "failed to verify assoc link setting with link id %u\n",
+					       link_id);
+				ret = -EINVAL;
+				goto exit;
+			}
+
 			arsta->is_assoc_link = true;
 			ahsta->assoc_link_id = link_id;
 		}
@@ -9123,6 +9167,9 @@ ath12k_mac_mlo_get_vdev_args(struct ath12k_link_vif *arvif,
 	 * link vdevs which are advertised as partners below
 	 */
 	ml_arg->link_add = true;
+
+	ml_arg->assoc_link = arvif->is_sta_assoc_link;
+
 	partner_info = ml_arg->partner_info;
 
 	links = ahvif->links_map;
@@ -11042,13 +11089,18 @@ ath12k_mac_setup_radio_iface_comb(struct ath12k *ar,
 	comb[0].limits = limits;
 	comb[0].n_limits = n_limits;
 	comb[0].max_interfaces = max_interfaces;
-	comb[0].num_different_channels = 1;
 	comb[0].beacon_int_infra_match = true;
 	comb[0].beacon_int_min_gcd = 100;
-	comb[0].radar_detect_widths = BIT(NL80211_CHAN_WIDTH_20_NOHT) |
-					BIT(NL80211_CHAN_WIDTH_20) |
-					BIT(NL80211_CHAN_WIDTH_40) |
-					BIT(NL80211_CHAN_WIDTH_80);
+
+	if (ar->ab->hw_params->single_pdev_only) {
+		comb[0].num_different_channels = 2;
+	} else {
+		comb[0].num_different_channels = 1;
+		comb[0].radar_detect_widths = BIT(NL80211_CHAN_WIDTH_20_NOHT) |
+						BIT(NL80211_CHAN_WIDTH_20) |
+						BIT(NL80211_CHAN_WIDTH_40) |
+						BIT(NL80211_CHAN_WIDTH_80);
+	}
 
 	return 0;
 }
