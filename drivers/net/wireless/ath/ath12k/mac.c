@@ -12254,6 +12254,7 @@ static void ath12k_mac_hw_unregister(struct ath12k_hw *ah)
 
 	for_each_ar(ah, ar, i) {
 		cancel_work_sync(&ar->regd_update_work);
+		ath12k_fw_stats_free(&ar->fw_stats);
 		ath12k_debugfs_unregister(ar);
 	}
 
