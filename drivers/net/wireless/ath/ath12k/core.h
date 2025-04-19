@@ -175,9 +175,34 @@ struct ath12k_ext_irq_grp {
 	struct net_device *napi_ndev;
 };
 
+enum ath12k_smbios_cc_type {
+	/* disable country code setting from SMBIOS */
+	ATH12K_SMBIOS_CC_DISABLE = 0,
+
+	/* set country code by ANSI country name, based on ISO3166-1 alpha2 */
+	ATH12K_SMBIOS_CC_ISO = 1,
+
+	/* worldwide regdomain */
+	ATH12K_SMBIOS_CC_WW = 2,
+};
+
 struct ath12k_smbios_bdf {
 	struct dmi_header hdr;
-	u32 padding;
+	u8 features_disabled;
+
+	/* enum ath12k_smbios_cc_type */
+	u8 country_code_flag;
+
+	/* To set specific country, you need to set country code
+	 * flag=ATH12K_SMBIOS_CC_ISO first, then if country is United
+	 * States, then country code value = 0x5553 ("US",'U' = 0x55, 'S'=
+	 * 0x53). To set country to INDONESIA, then country code value =
+	 * 0x4944 ("IN", 'I'=0x49, 'D'=0x44). If country code flag =
+	 * ATH12K_SMBIOS_CC_WW, then you can use worldwide regulatory
+	 * setting.
+	 */
+	u16 cc_code;
+
 	u8 bdf_enabled;
 	u8 bdf_ext[];
 } __packed;
@@ -317,6 +342,8 @@ struct ath12k_link_vif {
 
 	/* only used in station mode */
 	bool is_sta_assoc_link;
+
+	struct ath12k_reg_tpc_power_info reg_tpc_info;
 };
 
 struct ath12k_vif {
@@ -784,6 +811,8 @@ struct ath12k {
 	u8 ftm_msgref;
 	struct ath12k_fw_stats fw_stats;
 	unsigned long last_tx_power_update;
+
+	s8 max_allowed_tx_power;
 };
 
 struct ath12k_hw {
@@ -1041,6 +1070,8 @@ struct ath12k_base {
 	 */
 	struct ieee80211_regdomain *new_regd[MAX_RADIOS];
 
+	struct ath12k_reg_info *reg_info[MAX_RADIOS];
+
 	/* Current DFS Regulatory */
 	enum ath12k_dfs_region dfs_region;
 	struct ath12k_soc_dp_stats soc_stats;
@@ -1071,8 +1102,6 @@ struct ath12k_base {
 
 	struct ath12k_dbring_cap *db_caps;
 	u32 num_db_cap;
-
-	struct timer_list mon_reap_timer;
 
 	struct completion htc_suspend;
 
