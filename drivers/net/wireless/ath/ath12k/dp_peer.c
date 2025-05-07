@@ -330,3 +330,87 @@ int ath12k_dp_link_peer_rhash_delete(struct ath12k_dp *dp,
 
 	return 0;
 }
+
+static
+struct ath12k_dp_peer *ath12k_dp_peer_find(struct ath12k_dp_hw *dp_hw, u8 *addr)
+{
+	struct ath12k_dp_peer *peer;
+
+	lockdep_assert_held(&dp_hw->peer_lock);
+
+	list_for_each_entry(peer, &dp_hw->peers, list) {
+		if (!ether_addr_equal(peer->addr, addr))
+			continue;
+
+		return peer;
+	}
+
+	return NULL;
+}
+
+int ath12k_dp_peer_create(struct ath12k_dp_hw *dp_hw, u8 *addr,
+			  struct ath12k_dp_peer_create_params *params)
+{
+	struct ath12k_dp_peer *dp_peer;
+
+	spin_lock_bh(&dp_hw->peer_lock);
+	dp_peer = ath12k_dp_peer_find(dp_hw, addr);
+
+	if (dp_peer) {
+		spin_unlock_bh(&dp_hw->peer_lock);
+		return -EEXIST;
+	}
+
+	spin_unlock_bh(&dp_hw->peer_lock);
+
+	dp_peer = kzalloc(sizeof(*dp_peer), GFP_ATOMIC);
+	if (!dp_peer)
+		return -ENOMEM;
+
+	ether_addr_copy(dp_peer->addr, addr);
+	dp_peer->sta = params->sta;
+	dp_peer->is_mlo = params->is_mlo;
+	dp_peer->peer_id = params->is_mlo ? params->peer_id : ATH12K_DP_PEER_ID_INVALID;
+	dp_peer->is_vdev_peer = params->is_vdev_peer;
+	dp_peer->ucast_ra_only = params->ucast_ra_only;
+
+	dp_peer->sec_type = HAL_ENCRYPT_TYPE_OPEN;
+	dp_peer->sec_type_grp = HAL_ENCRYPT_TYPE_OPEN;
+
+	spin_lock_bh(&dp_hw->peer_lock);
+
+	list_add(&dp_peer->list, &dp_hw->peers);
+
+	if (dp_peer->is_mlo)
+		rcu_assign_pointer(dp_hw->dp_peer_list[dp_peer->peer_id], dp_peer);
+
+	spin_unlock_bh(&dp_hw->peer_lock);
+
+	return 0;
+}
+
+void ath12k_dp_peer_delete(struct ath12k_dp_hw *dp_hw, u8 *addr)
+{
+	struct ath12k_dp_peer *dp_peer;
+	u16 peerid_index;
+
+	spin_lock_bh(&dp_hw->peer_lock);
+
+	dp_peer = ath12k_dp_peer_find(dp_hw, addr);
+	if (!dp_peer) {
+		spin_unlock_bh(&dp_hw->peer_lock);
+		return;
+	}
+
+	if (dp_peer->is_mlo) {
+		peerid_index = dp_peer->peer_id;
+		rcu_assign_pointer(dp_hw->dp_peer_list[peerid_index], NULL);
+	}
+
+	list_del(&dp_peer->list);
+
+	spin_unlock_bh(&dp_hw->peer_lock);
+
+	synchronize_rcu();
+	kfree(dp_peer);
+}

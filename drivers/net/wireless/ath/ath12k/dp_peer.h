@@ -9,6 +9,8 @@
 
 #include "dp_rx.h"
 
+#define ATH12K_DP_PEER_ID_INVALID              0x3FFF
+
 struct ppdu_user_delayba {
 	u16 sw_peer_id;
 	u32 info0;
@@ -69,6 +71,20 @@ struct ath12k_dp_link_peer {
 	bool rhash_done;
 };
 
+struct ath12k_dp_peer {
+	struct list_head list;
+	struct ieee80211_sta *sta;
+	int peer_id;
+	u8 addr[ETH_ALEN];
+	bool is_mlo;
+	bool is_vdev_peer;
+
+	u16 sec_type;
+	u16 sec_type_grp;
+
+	bool ucast_ra_only;
+};
+
 void ath12k_peer_unmap_event(struct ath12k_base *ab, u16 peer_id);
 void ath12k_peer_map_event(struct ath12k_base *ab, u8 vdev_id, u16 peer_id,
 			   u8 *mac_addr, u16 ast_hash, u16 hw_peer_id);
@@ -91,4 +107,7 @@ int ath12k_dp_link_peer_rhash_add(struct ath12k_dp *dp,
 				  struct ath12k_dp_link_peer *peer);
 int ath12k_dp_link_peer_rhash_delete(struct ath12k_dp *dp,
 				     struct ath12k_dp_link_peer *peer);
+int ath12k_dp_peer_create(struct ath12k_dp_hw *dp_hw, u8 *addr,
+			  struct ath12k_dp_peer_create_params *params);
+void ath12k_dp_peer_delete(struct ath12k_dp_hw *dp_hw, u8 *addr);
 #endif

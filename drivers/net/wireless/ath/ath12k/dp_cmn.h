@@ -11,6 +11,20 @@
 struct ath12k_hw_group;
 struct ath12k;
 
+/* ML_Peer_ID starts from 8192, assuming max SLO clients count 1536,
+ * then max peer id shall be 9728, therefore rounding the peer table size
+ * to the nearest next power of 2 i.e 16384.
+ */
+#define MAX_DP_PEER_LIST_SIZE  16384
+
+struct ath12k_dp_hw {
+	struct ath12k_dp_peer __rcu *dp_peer_list[MAX_DP_PEER_LIST_SIZE];
+
+	/* Lock for protection of dp_peer_list and peers */
+	spinlock_t peer_lock;
+	struct list_head peers;
+};
+
 struct ath12k_dp_hw_group {
 	struct ath12k_dp *dp[ATH12K_MAX_SOCS];
 };
@@ -31,6 +45,14 @@ struct ath12k_per_peer_tx_stats {
 	u32 mu_grpid;
 	u32 mu_pos;
 	bool is_ampdu;
+};
+
+struct ath12k_dp_peer_create_params {
+	struct ieee80211_sta *sta;
+	bool is_mlo;
+	bool is_vdev_peer;
+	u16 peer_id;
+	bool ucast_ra_only;
 };
 
 void ath12k_dp_cmn_device_deinit(struct ath12k_dp *dp);
