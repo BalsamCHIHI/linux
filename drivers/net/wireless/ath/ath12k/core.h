@@ -17,6 +17,7 @@
 #include <linux/of_reserved_mem.h>
 #include <linux/panic_notifier.h>
 #include <linux/average.h>
+#include <linux/rhashtable.h>
 #include "qmi.h"
 #include "htc.h"
 #include "wmi.h"
@@ -546,6 +547,10 @@ struct ath12k_link_sta {
 
 	 /* for firmware use only */
 	u8 link_idx;
+
+	/* peer addr based rhashtable list pointer */
+	struct rhash_head rhash_addr;
+	bool rhash_done;
 };
 
 struct ath12k_reoq_buf {
@@ -1148,6 +1153,12 @@ struct ath12k_base {
 	struct ath12k_reg_freq reg_freq_6ghz;
 
 	const struct ieee80211_ops *ath12k_ops;
+
+	/* To synchronize rhash tbl write operation */
+	struct mutex sta_rhash_tbl_lock;
+
+	struct rhashtable *rhead_sta_addr;
+	struct rhashtable_params rhash_sta_addr_param;
 
 	/* must be last */
 	u8 drv_priv[] __aligned(sizeof(void *));

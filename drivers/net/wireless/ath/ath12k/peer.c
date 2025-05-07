@@ -402,3 +402,173 @@ int ath12k_peer_mlo_link_peers_delete(struct ath12k_vif *ahvif, struct ath12k_st
 
 	return err_ret;
 }
+
+static inline int ath12k_link_sta_rhash_insert(struct ath12k_base *ab,
+					       struct rhashtable *rtbl,
+					       struct rhash_head *rhead,
+					       struct rhashtable_params *params)
+{
+	struct ath12k_link_sta *tmp;
+
+	lockdep_assert_held(&ab->base_lock);
+
+	tmp = rhashtable_lookup_get_insert_fast(rtbl, rhead, *params);
+
+	if (!tmp)
+		return 0;
+	else if (IS_ERR(tmp))
+		return PTR_ERR(tmp);
+	else
+		return -EEXIST;
+}
+
+static inline int ath12k_link_sta_rhash_remove(struct ath12k_base *ab,
+					       struct rhashtable *rtbl,
+					       struct rhash_head *rhead,
+					       struct rhashtable_params *params)
+{
+	int ret;
+
+	lockdep_assert_held(&ab->base_lock);
+
+	ret = rhashtable_remove_fast(rtbl, rhead, *params);
+	if (ret && ret != -ENOENT)
+		return ret;
+
+	return 0;
+}
+
+int ath12k_link_sta_rhash_add(struct ath12k_base *ab,
+			      struct ath12k_link_sta *arsta)
+{
+	int ret;
+
+	lockdep_assert_held(&ab->base_lock);
+
+	if (!ab->rhead_sta_addr)
+		return -EPERM;
+
+	if (arsta->rhash_done)
+		return 0;
+
+	ret = ath12k_link_sta_rhash_insert(ab, ab->rhead_sta_addr,
+					   &arsta->rhash_addr,
+					   &ab->rhash_sta_addr_param);
+
+	if (ret)
+		ath12k_warn(ab, "failed to add arsta %pM in rhash_addr ret %d\n",
+			    arsta->addr, ret);
+	else
+		arsta->rhash_done = true;
+
+	return ret;
+}
+
+int ath12k_link_sta_rhash_delete(struct ath12k_base *ab,
+				 struct ath12k_link_sta *arsta)
+{
+	int ret;
+
+	lockdep_assert_held(&ab->base_lock);
+
+	if (!ab->rhead_sta_addr)
+		return -EPERM;
+
+	if (!arsta->rhash_done)
+		return 0;
+
+	ret = ath12k_link_sta_rhash_remove(ab, ab->rhead_sta_addr,
+					   &arsta->rhash_addr,
+					   &ab->rhash_sta_addr_param);
+
+	if (ret) {
+		ath12k_warn(ab,
+			    "failed to remove arsta %pM in rhash_addr ret %d\n",
+			    arsta->addr, ret);
+		return ret;
+	}
+
+	arsta->rhash_done = false;
+
+	return ret;
+}
+
+static int ath12k_link_sta_rhash_addr_tbl_init(struct ath12k_base *ab)
+{
+	struct rhashtable_params *param;
+	struct rhashtable *rhash_addr_tbl;
+	int ret;
+	size_t size;
+
+	lockdep_assert_held(&ab->sta_rhash_tbl_lock);
+
+	if (ab->rhead_sta_addr)
+		return 0;
+
+	size = sizeof(*ab->rhead_sta_addr);
+	rhash_addr_tbl = kzalloc(size, GFP_KERNEL);
+	if (!rhash_addr_tbl)
+		return -ENOMEM;
+
+	param = &ab->rhash_sta_addr_param;
+
+	param->key_offset = offsetof(struct ath12k_link_sta, addr);
+	param->head_offset = offsetof(struct ath12k_link_sta, rhash_addr);
+	param->key_len = sizeof_field(struct ath12k_link_sta, addr);
+	param->automatic_shrinking = true;
+	param->nelem_hint = ab->num_radios * ath12k_core_get_max_peers_per_radio(ab);
+
+	ret = rhashtable_init(rhash_addr_tbl, param);
+	if (ret) {
+		ath12k_warn(ab, "failed to init peer addr rhash table %d\n",
+			    ret);
+		goto err_free;
+	}
+
+	ab->rhead_sta_addr = rhash_addr_tbl;
+
+	return 0;
+
+err_free:
+	kfree(rhash_addr_tbl);
+
+	return ret;
+}
+
+int ath12k_link_sta_rhash_tbl_init(struct ath12k_base *ab)
+{
+	int ret;
+
+	mutex_lock(&ab->sta_rhash_tbl_lock);
+	ret = ath12k_link_sta_rhash_addr_tbl_init(ab);
+	mutex_unlock(&ab->sta_rhash_tbl_lock);
+
+	return ret;
+}
+
+void ath12k_link_sta_rhash_tbl_destroy(struct ath12k_base *ab)
+{
+	mutex_lock(&ab->sta_rhash_tbl_lock);
+
+	if (!ab->rhead_sta_addr)
+		goto unlock;
+
+	rhashtable_destroy(ab->rhead_sta_addr);
+	kfree(ab->rhead_sta_addr);
+	ab->rhead_sta_addr = NULL;
+
+unlock:
+	mutex_unlock(&ab->sta_rhash_tbl_lock);
+}
+
+struct ath12k_link_sta *ath12k_link_sta_find_by_addr(struct ath12k_base *ab,
+						     const u8 *addr)
+{
+	lockdep_assert_held(&ab->base_lock);
+
+	if (!ab->rhead_sta_addr)
+		return NULL;
+
+	return rhashtable_lookup_fast(ab->rhead_sta_addr, addr,
+				      ab->rhash_sta_addr_param);
+}

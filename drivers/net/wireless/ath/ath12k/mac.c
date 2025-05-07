@@ -5608,6 +5608,10 @@ static int ath12k_mac_station_remove(struct ath12k *ar,
 
 	ath12k_mac_station_post_remove(ar, arvif, arsta);
 
+	spin_lock_bh(&ar->ab->base_lock);
+	ath12k_link_sta_rhash_delete(ar->ab, arsta);
+	spin_unlock_bh(&ar->ab->base_lock);
+
 	if (sta->valid_links)
 		ath12k_mac_free_unassign_link_sta(ahvif->ah,
 						  arsta->ahsta, arsta->link_id);
@@ -5640,6 +5644,14 @@ static int ath12k_mac_station_add(struct ath12k *ar,
 			ret = -ENOMEM;
 			goto dec_num_station;
 		}
+	}
+
+	spin_lock_bh(&ab->base_lock);
+	ret = ath12k_link_sta_rhash_add(ab, arsta);
+	spin_unlock_bh(&ab->base_lock);
+	if (ret) {
+		ath12k_warn(ab, "Failed to add arsta: %pM to hash table", arsta->addr);
+		goto free_rx_stats;
 	}
 
 	peer_param.vdev_id = arvif->vdev_id;
@@ -5690,6 +5702,10 @@ static int ath12k_mac_station_add(struct ath12k *ar,
 
 free_peer:
 	ath12k_peer_delete(ar, arvif->vdev_id, arsta->addr);
+	spin_lock_bh(&ab->base_lock);
+	ath12k_link_sta_rhash_delete(ab, arsta);
+	spin_unlock_bh(&ab->base_lock);
+free_rx_stats:
 	kfree(arsta->rx_stats);
 	arsta->rx_stats = NULL;
 dec_num_station:
@@ -5767,6 +5783,10 @@ static void ath12k_mac_ml_station_remove(struct ath12k_vif *ahvif,
 		ar = arvif->ar;
 
 		ath12k_mac_station_post_remove(ar, arvif, arsta);
+
+		spin_lock_bh(&ar->ab->base_lock);
+		ath12k_link_sta_rhash_delete(ar->ab, arsta);
+		spin_unlock_bh(&ar->ab->base_lock);
 
 		ath12k_mac_free_unassign_link_sta(ah, ahsta, link_id);
 	}
@@ -11999,6 +12019,8 @@ void ath12k_mac_destroy(struct ath12k_hw_group *ag)
 				continue;
 			pdev->ar = NULL;
 		}
+
+		ath12k_link_sta_rhash_tbl_destroy(ab);
 	}
 
 	for (i = 0; i < ag->num_hw; i++) {
@@ -12035,6 +12057,7 @@ int ath12k_mac_allocate(struct ath12k_hw_group *ag)
 
 		ath12k_mac_set_device_defaults(ab);
 		total_radio += ab->num_radios;
+		ath12k_link_sta_rhash_tbl_init(ab);
 	}
 
 	if (!total_radio)
