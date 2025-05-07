@@ -2085,7 +2085,7 @@ static void ath12k_dp_mon_rx_deliver_msdu(struct ath12k_pdev_dp *dp_pdev,
 	struct ieee80211_rx_status *rx_status;
 	struct ieee80211_radiotap_he *he = NULL;
 	struct ieee80211_sta *pubsta = NULL;
-	struct ath12k_peer *peer;
+	struct ath12k_dp_link_peer *peer;
 	struct ath12k_skb_rxcb *rxcb = ATH12K_SKB_RXCB(msdu);
 	struct hal_rx_desc_data rx_info;
 	bool is_mcbc = rxcb->is_mcbc;
@@ -3376,13 +3376,13 @@ ath12k_dp_mon_rx_update_user_stats(struct ath12k_base *ab,
 	struct ath12k_link_sta *arsta;
 	struct ath12k_rx_peer_stats *rx_stats = NULL;
 	struct hal_rx_user_status *user_stats = &ppdu_info->userstats[uid];
-	struct ath12k_peer *peer;
+	struct ath12k_dp_link_peer *peer;
 	u32 num_msdu;
 
 	if (user_stats->ast_index == 0 || user_stats->ast_index == 0xFFFF)
 		return;
 
-	peer = ath12k_peer_find_by_ast(ab, user_stats->ast_index);
+	peer = ath12k_dp_link_peer_find_by_ast(ab, user_stats->ast_index);
 
 	if (!peer) {
 		ath12k_warn(ab, "peer ast idx %d can't be found\n",
@@ -3505,7 +3505,7 @@ int ath12k_dp_mon_srng_process(struct ath12k_pdev_dp *pdev_dp, int *budget,
 	struct dp_rxdma_mon_ring *buf_ring;
 	struct ath12k_sta *ahsta = NULL;
 	struct ath12k_link_sta *arsta;
-	struct ath12k_peer *peer;
+	struct ath12k_dp_link_peer *peer;
 	struct sk_buff_head skb_list;
 	u64 cookie;
 	int num_buffs_reaped = 0, srng_id, buf_id;
@@ -3621,7 +3621,7 @@ move_next:
 
 		rcu_read_lock();
 		spin_lock_bh(&ab->base_lock);
-		peer = ath12k_peer_find_by_id(ab, ppdu_info->peer_id);
+		peer = ath12k_dp_link_peer_find_by_id(ab, ppdu_info->peer_id);
 		if (!peer || !peer->sta) {
 			ath12k_dbg(ab, ATH12K_DBG_DATA,
 				   "failed to find the peer with monitor peer_id %d\n",

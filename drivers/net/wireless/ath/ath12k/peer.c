@@ -31,15 +31,15 @@ static int ath12k_wait_for_peer_common(struct ath12k_base *ab, int vdev_id,
 	int ret;
 
 	ret = wait_event_timeout(ab->peer_mapping_wq, ({
-				bool mapped;
+		bool res;
 
-				spin_lock_bh(&ab->base_lock);
-				mapped = !!ath12k_peer_find(ab, vdev_id, addr);
-				spin_unlock_bh(&ab->base_lock);
+		spin_lock_bh(&ab->base_lock);
+		res = !!ath12k_dp_link_peer_find_by_vdev_id_and_addr(ab, vdev_id, addr);
+		spin_unlock_bh(&ab->base_lock);
 
-				(mapped == expect_mapped ||
-				 test_bit(ATH12K_FLAG_CRASH_FLUSH, &ab->dev_flags));
-				}), 3 * HZ);
+		(res == expect_mapped ||
+		 test_bit(ATH12K_FLAG_CRASH_FLUSH, &ab->dev_flags));
+		}), 3 * HZ);
 
 	if (ret <= 0)
 		return -ETIMEDOUT;
@@ -49,7 +49,7 @@ static int ath12k_wait_for_peer_common(struct ath12k_base *ab, int vdev_id,
 
 void ath12k_peer_cleanup(struct ath12k *ar, u32 vdev_id)
 {
-	struct ath12k_peer *peer, *tmp;
+	struct ath12k_dp_link_peer *peer, *tmp;
 	struct ath12k_base *ab = ar->ab;
 
 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
@@ -149,7 +149,7 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 	struct ath12k_vif *ahvif = arvif->ahvif;
 	struct ath12k_link_sta *arsta;
 	u8 link_id = arvif->link_id;
-	struct ath12k_peer *peer;
+	struct ath12k_dp_link_peer *peer;
 	struct ath12k_sta *ahsta;
 	u16 ml_peer_id;
 	int ret;
@@ -164,7 +164,8 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 	}
 
 	spin_lock_bh(&ar->ab->base_lock);
-	peer = ath12k_peer_find_by_pdev_idx(ar->ab, ar->pdev_idx, arg->peer_addr);
+	peer = ath12k_dp_link_peer_find_by_pdev_id_and_addr(ar->ab, ar->pdev_idx,
+							    arg->peer_addr);
 	if (peer) {
 		spin_unlock_bh(&ar->ab->base_lock);
 		return -EINVAL;
@@ -186,7 +187,8 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 
 	spin_lock_bh(&ar->ab->base_lock);
 
-	peer = ath12k_peer_find(ar->ab, arg->vdev_id, arg->peer_addr);
+	peer = ath12k_dp_link_peer_find_by_vdev_id_and_addr(ar->ab, arg->vdev_id,
+							    arg->peer_addr);
 	if (!peer) {
 		spin_unlock_bh(&ar->ab->base_lock);
 		ath12k_warn(ar->ab, "failed to find peer %pM on vdev %i after creation\n",
