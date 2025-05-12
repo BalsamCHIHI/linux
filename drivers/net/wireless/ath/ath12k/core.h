@@ -864,24 +864,6 @@ struct ath12k_board_data {
 	size_t len;
 };
 
-struct ath12k_soc_dp_tx_err_stats {
-	/* TCL Ring Descriptor unavailable */
-	u32 desc_na[DP_TCL_NUM_RING_MAX];
-	/* Other failures during dp_tx due to mem allocation failure
-	 * idr unavailable etc.
-	 */
-	atomic_t misc_fail;
-};
-
-struct ath12k_soc_dp_stats {
-	u32 err_ring_pkts;
-	u32 invalid_rbm;
-	u32 rxdma_error[HAL_REO_ENTR_RING_RXDMA_ECODE_MAX];
-	u32 reo_error[HAL_REO_DEST_RING_ERROR_CODE_MAX];
-	u32 hal_reo_error[DP_REO_DST_RING_MAX];
-	struct ath12k_soc_dp_tx_err_stats tx_err;
-};
-
 struct ath12k_reg_freq {
 	u32 start_freq;
 	u32 end_freq;
@@ -1038,7 +1020,6 @@ struct ath12k_base {
 
 	/* Current DFS Regulatory */
 	enum ath12k_dfs_region dfs_region;
-	struct ath12k_soc_dp_stats soc_stats;
 #ifdef CONFIG_ATH12K_DEBUGFS
 	struct dentry *debugfs_soc;
 #endif

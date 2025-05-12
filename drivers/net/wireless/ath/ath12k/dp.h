@@ -15,6 +15,8 @@
 
 #define MAX_RXDMA_PER_PDEV     2
 
+#define DSCP_TID_MAP_TBL_NUM_ENTRIES_MAX	32
+
 struct ath12k_base;
 struct ath12k_dp_link_peer;
 struct ath12k_dp;
@@ -392,6 +394,24 @@ struct ath12k_dp_arch_ops {
 				       dma_addr_t paddr);
 };
 
+struct ath12k_device_dp_tx_err_stats {
+	/* TCL Ring Descriptor unavailable */
+	u32 desc_na[DP_TCL_NUM_RING_MAX];
+	/* Other failures during dp_tx due to mem allocation failure
+	 * idr unavailable etc.
+	 */
+	atomic_t misc_fail;
+};
+
+struct ath12k_device_dp_stats {
+	u32 err_ring_pkts;
+	u32 invalid_rbm;
+	u32 rxdma_error[HAL_REO_ENTR_RING_RXDMA_ECODE_MAX];
+	u32 reo_error[HAL_REO_DEST_RING_ERROR_CODE_MAX];
+	u32 hal_reo_error[DP_REO_DST_RING_MAX];
+	struct ath12k_device_dp_tx_err_stats tx_err;
+};
+
 struct ath12k_dp {
 	struct ath12k_base *ab;
 	u8 num_bank_profiles;
@@ -473,6 +493,7 @@ struct ath12k_dp {
 	/* The rhashtable containing struct ath12k_peer keyed by mac addr */
 	struct rhashtable *rhead_peer_addr;
 	struct rhashtable_params rhash_peer_addr_param;
+	struct ath12k_device_dp_stats device_stats;
 };
 
 static inline int ath12k_dp_arch_op_device_init(struct ath12k_dp *dp)

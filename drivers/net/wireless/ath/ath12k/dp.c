@@ -1548,7 +1548,7 @@ static int ath12k_dp_setup(struct ath12k_base *ab)
 		}
 	}
 
-	for (i = 0; i < HAL_DSCP_TID_MAP_TBL_NUM_ENTRIES_MAX; i++)
+	for (i = 0; i < DSCP_TID_MAP_TBL_NUM_ENTRIES_MAX; i++)
 		ath12k_hal_tx_set_dscp_tid_map(ab, i);
 
 	ret = ath12k_dp_rx_alloc(ab);
