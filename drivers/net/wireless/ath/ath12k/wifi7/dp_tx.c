@@ -481,7 +481,7 @@ static void ath12k_wifi7_dp_tx_update_txcompl(struct ath12k_pdev_dp *dp_pdev,
 {
 	struct ath12k_dp *dp = dp_pdev->dp;
 	struct ath12k_base *ab = dp->ab;
-	struct ath12k_dp_peer *peer;
+	struct ath12k_dp_link_peer *peer;
 	struct ieee80211_sta *sta;
 	struct ath12k_sta *ahsta;
 	struct ath12k_link_sta *arsta;
@@ -491,7 +491,7 @@ static void ath12k_wifi7_dp_tx_update_txcompl(struct ath12k_pdev_dp *dp_pdev,
 	int ret;
 
 	spin_lock_bh(&dp->dp_lock);
-	peer = ath12k_dp_peer_find_by_peerid_index(dp_pdev, ts->peer_id);
+	peer = ath12k_dp_link_peer_find_by_peerid_index(dp_pdev, ts->peer_id);
 	if (!peer || !peer->sta) {
 		ath12k_dbg(ab, ATH12K_DBG_DP_TX,
 			   "failed to find the peer by id %u\n", ts->peer_id);
@@ -505,8 +505,8 @@ static void ath12k_wifi7_dp_tx_update_txcompl(struct ath12k_pdev_dp *dp_pdev,
 	/* This is to prefer choose the real NSS value arsta->last_txrate.nss,
 	 * if it is invalid, then choose the NSS value while assoc.
 	 */
-	if (arsta->last_txrate.nss)
-		txrate.nss = arsta->last_txrate.nss;
+	if (peer->last_txrate.nss)
+		txrate.nss = peer->last_txrate.nss;
 	else
 		txrate.nss = arsta->peer_nss;
 	spin_unlock_bh(&dp->dp_lock);
@@ -592,7 +592,7 @@ static void ath12k_wifi7_dp_tx_update_txcompl(struct ath12k_pdev_dp *dp_pdev,
 	}
 
 	spin_lock_bh(&dp->dp_lock);
-	arsta->txrate = txrate;
+	peer->txrate = txrate;
 	spin_unlock_bh(&dp->dp_lock);
 }
 

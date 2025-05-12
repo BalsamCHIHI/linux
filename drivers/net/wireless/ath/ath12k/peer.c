@@ -8,6 +8,7 @@
 #include "peer.h"
 #include "dp_peer.h"
 #include "debug.h"
+#include "debugfs.h"
 
 static int ath12k_wait_for_peer_common(struct ath12k_base *ab, int vdev_id,
 				       const u8 *addr, bool expect_mapped)
@@ -48,6 +49,7 @@ void ath12k_peer_cleanup(struct ath12k *ar, u32 vdev_id)
 		ath12k_warn(ab, "removing stale peer %pM from vdev_id %d\n",
 			    peer->addr, vdev_id);
 
+		kfree(peer->peer_stats.rx_stats);
 		list_del(&peer->list);
 		kfree(peer);
 		ar->num_peers--;
@@ -201,6 +203,11 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 			return ret;
 
 		return -ENOENT;
+	}
+
+	if (ath12k_debugfs_is_extd_rx_stats_enabled(ar) && !peer->peer_stats.rx_stats) {
+		peer->peer_stats.rx_stats = kzalloc(sizeof(*peer->peer_stats.rx_stats),
+						    GFP_KERNEL);
 	}
 
 	peer->pdev_idx = ar->pdev_idx;

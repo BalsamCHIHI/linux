@@ -11,6 +11,7 @@
 #include "debug.h"
 #include "debugfs_htt_stats.h"
 #include "debugfs.h"
+#include "dp_cmn.h"
 
 static
 u32 ath12k_dbg_sta_dump_rate_stats(u8 *buf, u32 offset, const int size,
@@ -149,6 +150,8 @@ static ssize_t ath12k_dbg_sta_dump_rx_stats(struct file *file,
 	int len = 0, i, ret = 0;
 	bool he_rates_avail;
 	struct ath12k *ar;
+	struct ath12k_dp_link_peer *link_peer;
+	struct ath12k_dp *dp;
 
 	wiphy_lock(ah->hw->wiphy);
 
@@ -165,18 +168,28 @@ static ssize_t ath12k_dbg_sta_dump_rx_stats(struct file *file,
 
 	ar = arsta->arvif->ar;
 
-	u8 *buf __free(kfree) = kzalloc(size, GFP_KERNEL);
-	if (!buf) {
-		ret = -ENOENT;
-		goto out;
+	dp = ath12k_ab_to_dp(ar->ab);
+	spin_lock_bh(&dp->dp_lock);
+
+	link_peer = ath12k_dp_link_peer_find_by_addr(dp, arsta->addr);
+	if (!link_peer) {
+		spin_unlock_bh(&dp->dp_lock);
+		wiphy_unlock(ah->hw->wiphy);
+		return -ENOENT;
 	}
 
-	spin_lock_bh(&ar->ab->base_lock);
-
-	rx_stats = arsta->rx_stats;
+	rx_stats = link_peer->peer_stats.rx_stats;
 	if (!rx_stats) {
-		ret = -ENOENT;
-		goto unlock;
+		spin_unlock_bh(&dp->dp_lock);
+		wiphy_unlock(ah->hw->wiphy);
+		return -ENOENT;
+	}
+
+	u8 *buf __free(kfree) = kzalloc(size, GFP_KERNEL);
+	if (!buf) {
+		spin_unlock_bh(&dp->dp_lock);
+		wiphy_unlock(ah->hw->wiphy);
+		return -ENOENT;
 	}
 
 	len += scnprintf(buf + len, size - len, "RX peer stats:\n\n");
@@ -237,12 +250,11 @@ static ssize_t ath12k_dbg_sta_dump_rx_stats(struct file *file,
 	len += ath12k_dbg_sta_dump_rate_stats(buf, len, size, he_rates_avail,
 					      &rx_stats->byte_stats);
 
-unlock:
-	spin_unlock_bh(&ar->ab->base_lock);
+	spin_unlock_bh(&dp->dp_lock);
 
 	if (len)
 		ret = simple_read_from_buffer(user_buf, count, ppos, buf, len);
-out:
+
 	wiphy_unlock(ah->hw->wiphy);
 	return ret;
 }
@@ -261,12 +273,12 @@ static ssize_t ath12k_dbg_sta_reset_rx_stats(struct file *file,
 	struct ieee80211_link_sta *link_sta = file->private_data;
 	struct ath12k_sta *ahsta = ath12k_sta_to_ahsta(link_sta->sta);
 	struct ath12k_hw *ah = ahsta->ahvif->ah;
-	struct ath12k_rx_peer_stats *rx_stats;
 	struct ath12k_link_sta *arsta;
 	u8 link_id = link_sta->link_id;
 	struct ath12k *ar;
 	bool reset;
 	int ret;
+	bool result;
 
 	ret = kstrtobool_from_user(buf, count, &reset);
 	if (ret)
@@ -290,17 +302,11 @@ static ssize_t ath12k_dbg_sta_reset_rx_stats(struct file *file,
 
 	ar = arsta->arvif->ar;
 
-	spin_lock_bh(&ar->ab->base_lock);
-
-	rx_stats = arsta->rx_stats;
-	if (!rx_stats) {
-		spin_unlock_bh(&ar->ab->base_lock);
+	result = ath12k_dp_link_peer_reset_rx_stats(ath12k_ab_to_dp(ar->ab), arsta->addr);
+	if (!result) {
 		ret = -ENOENT;
 		goto out;
 	}
-
-	memset(rx_stats, 0, sizeof(*rx_stats));
-	spin_unlock_bh(&ar->ab->base_lock);
 
 	ret = count;
 out:

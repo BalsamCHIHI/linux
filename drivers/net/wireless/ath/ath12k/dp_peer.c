@@ -138,6 +138,7 @@ void ath12k_peer_unmap_event(struct ath12k_base *ab, u16 peer_id)
 	ath12k_dbg(ab, ATH12K_DBG_DP_HTT, "htt peer unmap vdev %d peer %pM id %d\n",
 		   peer->vdev_id, peer->addr, peer_id);
 
+	kfree(peer->peer_stats.rx_stats);
 	list_del(&peer->list);
 	kfree(peer);
 	wake_up(&ab->peer_mapping_wq);
@@ -166,8 +167,8 @@ void ath12k_peer_map_event(struct ath12k_base *ab, u8 vdev_id, u16 peer_id,
 		ether_addr_copy(peer->addr, mac_addr);
 		list_add(&peer->list, &dp->peers);
 		wake_up(&ab->peer_mapping_wq);
+		ewma_avg_rssi_init(&peer->avg_rssi);
 	}
-
 	ath12k_dbg(ab, ATH12K_DBG_DP_HTT, "htt peer map vdev %d peer %pM id %d\n",
 		   vdev_id, mac_addr, peer_id);
 
@@ -572,4 +573,56 @@ void ath12k_dp_link_peer_unassign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_
 
 	if (dp_peer->is_vdev_peer)
 		ath12k_dp_peer_delete(dp_hw, addr);
+}
+
+void ath12k_link_peer_get_sta_rate_info_stats(struct ath12k_dp *dp, const u8 *addr,
+					      struct ath12k_dp_link_peer_rate_info *info)
+{
+	struct ath12k_dp_link_peer *link_peer;
+
+	spin_lock_bh(&dp->dp_lock);
+	link_peer = ath12k_dp_link_peer_find_by_addr(dp, addr);
+	if (!link_peer) {
+		spin_unlock_bh(&dp->dp_lock);
+		return;
+	}
+
+	info->rx_duration = link_peer->rx_duration;
+	info->tx_duration = link_peer->tx_duration;
+	info->txrate.legacy = link_peer->txrate.legacy;
+	info->txrate.mcs = link_peer->txrate.mcs;
+	info->txrate.nss = link_peer->txrate.nss;
+	info->txrate.bw = link_peer->txrate.bw;
+	info->txrate.he_gi = link_peer->txrate.he_gi;
+	info->txrate.he_dcm = link_peer->txrate.he_dcm;
+	info->txrate.he_ru_alloc = link_peer->txrate.he_ru_alloc;
+	info->txrate.flags = link_peer->txrate.flags;
+	info->rssi_comb = link_peer->rssi_comb;
+	info->signal_avg = ewma_avg_rssi_read(&link_peer->avg_rssi);
+
+	spin_unlock_bh(&dp->dp_lock);
+}
+
+bool ath12k_dp_link_peer_reset_rx_stats(struct ath12k_dp *dp, const u8 *addr)
+{
+	struct ath12k_rx_peer_stats *rx_stats = NULL;
+	struct ath12k_dp_link_peer *link_peer;
+
+	spin_lock_bh(&dp->dp_lock);
+	link_peer = ath12k_dp_link_peer_find_by_addr(dp, addr);
+	if (!link_peer) {
+		spin_unlock_bh(&dp->dp_lock);
+		return false;
+	}
+
+	if (!link_peer->peer_stats.rx_stats) {
+		spin_unlock_bh(&dp->dp_lock);
+		return false;
+	}
+
+	rx_stats = link_peer->peer_stats.rx_stats;
+	memset(rx_stats, 0, sizeof(*rx_stats));
+
+	spin_unlock_bh(&dp->dp_lock);
+	return true;
 }
