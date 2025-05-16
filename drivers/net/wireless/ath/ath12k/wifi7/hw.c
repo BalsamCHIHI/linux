@@ -16,7 +16,7 @@
 #include "hw.h"
 #include "../mhi.h"
 #include "mhi.h"
-#include "../dp_rx.h"
+#include "dp_rx.h"
 #include "wmi.h"
 
 static const guid_t wcn7850_uuid = GUID_INIT(0xf634f534, 0x6147, 0x11ec,
