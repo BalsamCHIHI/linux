@@ -969,7 +969,7 @@ struct ath12k_base {
 
 	struct ath12k_htc htc;
 
-	struct ath12k_dp dp;
+	struct ath12k_dp *dp;
 
 	void __iomem *mem;
 	unsigned long mem_len;
@@ -1408,6 +1408,11 @@ static inline struct ath12k_base *ath12k_ag_to_ab(struct ath12k_hw_group *ag,
 						  u8 device_id)
 {
 	return ag->ab[device_id];
+}
+
+static inline struct ath12k_dp *ath12k_ab_to_dp(struct ath12k_base *ab)
+{
+	return ab->dp;
 }
 
 #endif /* _CORE_H_ */

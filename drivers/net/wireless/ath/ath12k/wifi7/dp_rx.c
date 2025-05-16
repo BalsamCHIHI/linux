@@ -14,7 +14,7 @@ void ath12k_wifi7_peer_rx_tid_qref_setup(struct ath12k_base *ab, u16 peer_id, u1
 					 dma_addr_t paddr)
 {
 	struct ath12k_reo_queue_ref *qref;
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	bool ml_peer = false;
 
 	if (!ab->hw_params->reoq_lut_support)
@@ -44,7 +44,7 @@ static void ath12k_wifi7_peer_rx_tid_qref_reset(struct ath12k_base *ab,
 						u16 peer_id, u16 tid)
 {
 	struct ath12k_reo_queue_ref *qref;
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	bool ml_peer = false;
 
 	if (!ab->hw_params->reoq_lut_support)
@@ -111,7 +111,7 @@ int ath12k_wifi7_dp_rx_link_desc_return(struct ath12k_base *ab,
 {
 	struct hal_wbm_release_ring *link_desc = (struct hal_wbm_release_ring *)ring;
 	struct hal_wbm_release_ring *desc;
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct hal_srng *srng;
 	int ret = 0;
 
@@ -144,7 +144,7 @@ int ath12k_wifi7_dp_reo_cmd_send(struct ath12k_base *ab,
 				 void (*cb)(struct ath12k_dp *dp, void *ctx,
 					    enum hal_reo_cmd_status status))
 {
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct ath12k_dp_rx_reo_cmd *dp_cmd;
 	struct hal_srng *cmd_ring;
 	int cmd_num;
@@ -640,9 +640,10 @@ int ath12k_wifi7_dp_rx_process(struct ath12k_base *ab, int ring_id,
 	struct ath12k_hw_link *hw_links = ag->hw_links;
 	int num_buffs_reaped[ATH12K_MAX_SOCS] = {};
 	struct ath12k_rx_desc_info *desc_info;
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct dp_rxdma_ring *rx_ring = &dp->rx_refill_buf_ring;
 	struct hal_reo_dest_ring *desc;
+	struct ath12k_dp *partner_dp;
 	struct ath12k_base *partner_ab;
 	struct sk_buff_head msdu_list;
 	struct ath12k_skb_rxcb *rxcb;
@@ -779,7 +780,8 @@ try_again:
 			continue;
 
 		partner_ab = ath12k_ag_to_ab(ag, device_id);
-		rx_ring = &partner_ab->dp.rx_refill_buf_ring;
+		partner_dp = ath12k_ab_to_dp(partner_ab);
+		rx_ring = &partner_dp->rx_refill_buf_ring;
 
 		ath12k_dp_rx_bufs_replenish(partner_ab, rx_ring,
 					    &rx_desc_used_list[device_id],
@@ -828,7 +830,7 @@ static int ath12k_wifi7_dp_rx_h_defrag_reo_reinject(struct ath12k *ar,
 						    struct sk_buff *defrag_skb)
 {
 	struct ath12k_base *ab = ar->ab;
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct hal_rx_desc *rx_desc = (struct hal_rx_desc *)defrag_skb->data;
 	struct hal_reo_entrance_ring *reo_ent_ring;
 	struct hal_reo_dest_ring *reo_dest_ring;
@@ -1313,6 +1315,8 @@ int ath12k_wifi7_dp_rx_process_err(struct ath12k_base *ab, struct napi_struct *n
 				   int budget)
 {
 	struct ath12k_hw_group *ag = ab->ag;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
+	struct ath12k_dp *partner_dp;
 	struct list_head rx_desc_used_list[ATH12K_MAX_SOCS];
 	u32 msdu_cookies[HAL_NUM_RX_MSDUS_PER_LINK_DESC];
 	int num_buffs_reaped[ATH12K_MAX_SOCS] = {};
@@ -1342,7 +1346,7 @@ int ath12k_wifi7_dp_rx_process_err(struct ath12k_base *ab, struct napi_struct *n
 	for (device_id = 0; device_id < ATH12K_MAX_SOCS; device_id++)
 		INIT_LIST_HEAD(&rx_desc_used_list[device_id]);
 
-	reo_except = &ab->dp.reo_except_ring;
+	reo_except = &dp->reo_except_ring;
 
 	srng = &ab->hal.srng_list[reo_except->ring_id];
 
@@ -1367,17 +1371,18 @@ int ath12k_wifi7_dp_rx_process_err(struct ath12k_base *ab, struct napi_struct *n
 					   HAL_REO_DEST_RING_INFO0_SRC_LINK_ID);
 		device_id = hw_links[hw_link_id].device_id;
 		partner_ab = ath12k_ag_to_ab(ag, device_id);
+		partner_dp = ath12k_ab_to_dp(partner_ab);
 
 		pdev_id = ath12k_hw_mac_id_to_pdev_id(partner_ab->hw_params,
 						      hw_links[hw_link_id].pdev_idx);
 		ar = partner_ab->pdevs[pdev_id].ar;
 
-		link_desc_banks = partner_ab->dp.link_desc_banks;
+		link_desc_banks = partner_dp->link_desc_banks;
 		link_desc_va = link_desc_banks[desc_bank].vaddr +
 			       (paddr - link_desc_banks[desc_bank].paddr);
 		ath12k_wifi7_hal_rx_msdu_link_info_get(link_desc_va, &num_msdus,
 						       msdu_cookies, &rbm);
-		if (rbm != partner_ab->dp.idle_link_rbm &&
+		if (rbm != partner_dp->idle_link_rbm &&
 		    rbm != HAL_RX_BUF_RBM_SW3_BM &&
 		    rbm != partner_ab->hw_params->hal_params->rx_buf_rbm) {
 			act = HAL_WBM_REL_BM_ACT_REL_MSDU;
@@ -1436,7 +1441,8 @@ exit:
 			continue;
 
 		partner_ab = ath12k_ag_to_ab(ag, device_id);
-		rx_ring = &partner_ab->dp.rx_refill_buf_ring;
+		partner_dp = ath12k_ab_to_dp(partner_ab);
+		rx_ring = &partner_dp->rx_refill_buf_ring;
 
 		ath12k_dp_rx_bufs_replenish(partner_ab, rx_ring,
 					    &rx_desc_used_list[device_id],
@@ -1702,7 +1708,8 @@ int ath12k_wifi7_dp_rx_process_wbm_err(struct ath12k_base *ab,
 	struct list_head rx_desc_used_list[ATH12K_MAX_SOCS];
 	struct ath12k_hw_group *ag = ab->ag;
 	struct ath12k *ar;
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
+	struct ath12k_dp *partner_dp;
 	struct dp_rxdma_ring *rx_ring;
 	struct hal_rx_wbm_rel_info err_info;
 	struct hal_srng *srng;
@@ -1852,7 +1859,8 @@ int ath12k_wifi7_dp_rx_process_wbm_err(struct ath12k_base *ab,
 			continue;
 
 		partner_ab = ath12k_ag_to_ab(ag, device_id);
-		rx_ring = &partner_ab->dp.rx_refill_buf_ring;
+		partner_dp = ath12k_ab_to_dp(partner_ab);
+		rx_ring = &partner_dp->rx_refill_buf_ring;
 
 		ath12k_dp_rx_bufs_replenish(ab, rx_ring,
 					    &rx_desc_used_list[device_id],
@@ -1896,7 +1904,7 @@ done:
 
 int ath12k_dp_rxdma_ring_sel_config_qcn9274(struct ath12k_base *ab)
 {
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct htt_rx_ring_tlv_filter tlv_filter = {0};
 	u32 ring_id;
 	int ret;
@@ -1934,7 +1942,7 @@ EXPORT_SYMBOL(ath12k_dp_rxdma_ring_sel_config_qcn9274);
 
 int ath12k_dp_rxdma_ring_sel_config_wcn7850(struct ath12k_base *ab)
 {
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct htt_rx_ring_tlv_filter tlv_filter = {0};
 	u32 ring_id;
 	int ret = 0;
@@ -1977,7 +1985,7 @@ EXPORT_SYMBOL(ath12k_dp_rxdma_ring_sel_config_wcn7850);
 
 void ath12k_wifi7_dp_rx_process_reo_status(struct ath12k_base *ab)
 {
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct hal_tlv_64_hdr *hdr;
 	struct hal_srng *srng;
 	struct ath12k_dp_rx_reo_cmd *cmd, *tmp;

@@ -75,7 +75,7 @@ int ath12k_dp_rx_bufs_replenish(struct ath12k_base *ab,
 	int num_remain;
 	u32 cookie;
 	dma_addr_t paddr;
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct ath12k_rx_desc_info *rx_desc;
 	enum hal_rx_buf_return_buf_manager mgr = ab->hw_params->hal_params->rx_buf_rbm;
 
@@ -190,7 +190,7 @@ static int ath12k_dp_rxdma_mon_buf_ring_free(struct ath12k_base *ab,
 
 static int ath12k_dp_rxdma_buf_free(struct ath12k_base *ab)
 {
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 
 	ath12k_dp_rxdma_mon_buf_ring_free(ab, &dp->rxdma_mon_buf_ring);
 
@@ -227,7 +227,7 @@ static int ath12k_dp_rxdma_ring_buf_setup(struct ath12k_base *ab,
 
 static int ath12k_dp_rxdma_buf_setup(struct ath12k_base *ab)
 {
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	int ret;
 
 	ret = ath12k_dp_rxdma_ring_buf_setup(ab, &dp->rx_refill_buf_ring);
@@ -263,7 +263,7 @@ static void ath12k_dp_rx_pdev_srng_free(struct ath12k *ar)
 
 void ath12k_dp_rx_pdev_reo_cleanup(struct ath12k_base *ab)
 {
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	int i;
 
 	for (i = 0; i < DP_REO_DST_RING_MAX; i++)
@@ -272,7 +272,7 @@ void ath12k_dp_rx_pdev_reo_cleanup(struct ath12k_base *ab)
 
 int ath12k_dp_rx_pdev_reo_setup(struct ath12k_base *ab)
 {
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	int ret;
 	int i;
 
@@ -320,7 +320,7 @@ static int ath12k_dp_rx_pdev_srng_alloc(struct ath12k *ar)
 
 void ath12k_dp_rx_reo_cmd_list_cleanup(struct ath12k_base *ab)
 {
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct ath12k_dp_rx_reo_cmd *cmd, *tmp;
 	struct ath12k_dp_rx_reo_cache_flush_elem *cmd_cache, *tmp_cache;
 
@@ -468,7 +468,7 @@ int ath12k_dp_rx_peer_tid_setup(struct ath12k *ar, const u8 *peer_mac, int vdev_
 				enum hal_pn_type pn_type)
 {
 	struct ath12k_base *ab = ar->ab;
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct ath12k_peer *peer;
 	struct ath12k_sta *ahsta;
 	struct ath12k_dp_rx_tid *rx_tid;
@@ -1440,7 +1440,7 @@ u64 ath12k_dp_rx_h_get_pn(struct ath12k *ar, struct sk_buff *skb)
 
 void ath12k_dp_rx_free(struct ath12k_base *ab)
 {
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	int i;
 
 	ath12k_dp_srng_cleanup(ab, &dp->rx_refill_buf_ring.refill_buf_ring);
@@ -1467,7 +1467,7 @@ void ath12k_dp_rx_pdev_free(struct ath12k_base *ab, int mac_id)
 
 int ath12k_dp_rx_htt_setup(struct ath12k_base *ab)
 {
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	u32 ring_id;
 	int i, ret;
 
@@ -1526,7 +1526,7 @@ int ath12k_dp_rx_htt_setup(struct ath12k_base *ab)
 
 int ath12k_dp_rx_alloc(struct ath12k_base *ab)
 {
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	int i, ret;
 
 	idr_init(&dp->rxdma_mon_buf_ring.bufs_idr);

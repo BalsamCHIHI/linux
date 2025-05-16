@@ -2271,7 +2271,8 @@ ath12k_dp_mon_parse_status_buf(struct ath12k *ar,
 			       const struct dp_mon_packet_info *packet_info)
 {
 	struct ath12k_base *ab = ar->ab;
-	struct dp_rxdma_mon_ring *buf_ring = &ab->dp.rxdma_mon_buf_ring;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
+	struct dp_rxdma_mon_ring *buf_ring = &dp->rxdma_mon_buf_ring;
 	struct sk_buff *msdu;
 	int buf_id;
 	u32 offset;
@@ -3489,7 +3490,7 @@ int ath12k_dp_mon_srng_process(struct ath12k *ar, int *budget,
 	struct ath12k_pdev_dp *pdev_dp = &ar->dp;
 	struct ath12k_mon_data *pmon = (struct ath12k_mon_data *)&pdev_dp->mon_data;
 	struct hal_rx_mon_ppdu_info *ppdu_info = &pmon->mon_ppdu_info;
-	struct ath12k_dp *dp = &ab->dp;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct hal_mon_dest_desc *mon_dst_desc;
 	struct sk_buff *skb;
 	struct ath12k_skb_rxcb *rxcb;
