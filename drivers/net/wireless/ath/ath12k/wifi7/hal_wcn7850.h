@@ -8,6 +8,9 @@
 #include "hal_tx.h"
 #include "hal_rx.h"
 
+extern const struct ath12k_hal_tcl_to_wbm_rbm_map
+ath12k_hal_wcn7850_tcl_to_wbm_rbm_map[DP_TCL_NUM_RING_MAX];
+
 void ath12k_hal_rx_desc_get_crypto_header_wcn7850(struct hal_rx_desc *desc,
 						  u8 *crypto_hdr,
 						  enum hal_encrypt_type encyp);
