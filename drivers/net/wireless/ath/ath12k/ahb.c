@@ -16,7 +16,7 @@
 #include "debug.h"
 #include "hif.h"
 #include "fw.h"
-#include "wifi7/dp.h"
+#include "wifi7/hal.h"
 
 #define ATH12K_IRQ_CE0_OFFSET 4
 #define ATH12K_MAX_UPDS 1

@@ -9,6 +9,7 @@
 #include "../hal.h"
 #include "hal_tx.h"
 #include "hal_rx.h"
+#include "hal.h"
 
 extern const struct hal_ops hal_qcn9274_ops;
 extern const struct ath12k_hw_regs qcn9274_v1_regs;

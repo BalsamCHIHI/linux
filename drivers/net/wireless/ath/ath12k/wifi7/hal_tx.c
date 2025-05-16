@@ -4,10 +4,10 @@
  * Copyright (c) 2021-2022, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
-#include "hal_desc.h"
 #include "../hal.h"
 #include "hal_tx.h"
 #include "../hif.h"
+#include "hal.h"
 
 #define DSCP_TID_MAP_TBL_ENTRY_SIZE 64
 
