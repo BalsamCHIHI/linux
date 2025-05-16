@@ -7,7 +7,7 @@
 #include <crypto/hash.h>
 #include "core.h"
 #include "dp_tx.h"
-#include "hal_tx.h"
+#include "wifi7/hal_tx.h"
 #include "hif.h"
 #include "debug.h"
 #include "dp_rx.h"
