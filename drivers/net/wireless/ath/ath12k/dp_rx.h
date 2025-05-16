@@ -346,9 +346,6 @@ void ath12k_dp_rx_h_undecap_frag(struct ath12k *ar, struct sk_buff *msdu,
 				 enum hal_encrypt_type enctype, u32 flags);
 void ath12k_dp_rx_frags_cleanup(struct ath12k_dp_rx_tid *rx_tid,
 				bool rel_link_desc);
-int ath12k_dp_rx_link_desc_return(struct ath12k_base *ab,
-				  struct hal_reo_dest_ring *ring,
-				  enum hal_wbm_rel_bm_act action);
 int ath12k_dp_rx_h_michael_mic(struct crypto_shash *tfm, u8 *key,
 			       struct ieee80211_hdr *hdr, u8 *data,
 			       size_t data_len, u8 *mic);
@@ -407,4 +404,8 @@ void ath12k_dp_rx_h_fetch_info(struct ath12k_base *ab,  struct hal_rx_desc *rx_d
 
 int ath12k_dp_rx_crypto_mic_len(struct ath12k *ar, enum hal_encrypt_type enctype);
 void ath12k_dp_rx_h_ppdu(struct ath12k *ar, struct ath12k_dp_rx_info *rx_info);
+void ath12k_dp_reo_cmd_free(struct ath12k_dp *dp, void *ctx,
+			    enum hal_reo_cmd_status status);
+void ath12k_dp_rx_tid_del_func(struct ath12k_dp *dp, void *ctx,
+			       enum hal_reo_cmd_status status);
 #endif /* ATH12K_DP_RX_H */
