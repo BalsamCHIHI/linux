@@ -1384,10 +1384,11 @@ err:
 	return ret;
 }
 
-static int ath12k_mac_op_config(struct ieee80211_hw *hw, u32 changed)
+int ath12k_mac_op_config(struct ieee80211_hw *hw, u32 changed)
 {
 	return 0;
 }
+EXPORT_SYMBOL(ath12k_mac_op_config);
 
 static int ath12k_mac_setup_bcn_p2p_ie(struct ath12k_link_vif *arvif,
 				       struct sk_buff *bcn)
@@ -3510,7 +3511,7 @@ static void ath12k_mac_unassign_link_vif(struct ath12k_link_vif *arvif)
 		memset(arvif, 0, sizeof(*arvif));
 }
 
-static int
+int
 ath12k_mac_op_change_vif_links(struct ieee80211_hw *hw,
 			       struct ieee80211_vif *vif,
 			       u16 old_links, u16 new_links,
@@ -3559,6 +3560,7 @@ ath12k_mac_op_change_vif_links(struct ieee80211_hw *hw,
 
 	return 0;
 }
+EXPORT_SYMBOL(ath12k_mac_op_change_vif_links);
 
 static int ath12k_mac_fils_discovery(struct ath12k_link_vif *arvif,
 				     struct ieee80211_bss_conf *info)
@@ -3607,9 +3609,9 @@ static int ath12k_mac_fils_discovery(struct ath12k_link_vif *arvif,
 	return ret;
 }
 
-static void ath12k_mac_op_vif_cfg_changed(struct ieee80211_hw *hw,
-					  struct ieee80211_vif *vif,
-					  u64 changed)
+void ath12k_mac_op_vif_cfg_changed(struct ieee80211_hw *hw,
+				   struct ieee80211_vif *vif,
+				   u64 changed)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	unsigned long links = ahvif->links_map;
@@ -3677,6 +3679,7 @@ static void ath12k_mac_op_vif_cfg_changed(struct ieee80211_hw *hw,
 		}
 	}
 }
+EXPORT_SYMBOL(ath12k_mac_op_vif_cfg_changed);
 
 static void ath12k_mac_vif_setup_ps(struct ath12k_link_vif *arvif)
 {
@@ -4056,10 +4059,10 @@ static void ath12k_ahvif_put_link_cache(struct ath12k_vif *ahvif, u8 link_id)
 	ahvif->cache[link_id] = NULL;
 }
 
-static void ath12k_mac_op_link_info_changed(struct ieee80211_hw *hw,
-					    struct ieee80211_vif *vif,
-					    struct ieee80211_bss_conf *info,
-					    u64 changed)
+void ath12k_mac_op_link_info_changed(struct ieee80211_hw *hw,
+				     struct ieee80211_vif *vif,
+				     struct ieee80211_bss_conf *info,
+				     u64 changed)
 {
 	struct ath12k *ar;
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
@@ -4089,6 +4092,7 @@ static void ath12k_mac_op_link_info_changed(struct ieee80211_hw *hw,
 
 	ath12k_mac_bss_info_changed(ar, arvif, info, changed);
 }
+EXPORT_SYMBOL(ath12k_mac_op_link_info_changed);
 
 static struct ath12k*
 ath12k_mac_select_scan_device(struct ieee80211_hw *hw,
@@ -4386,10 +4390,10 @@ int ath12k_mac_get_fw_stats(struct ath12k *ar,
 	return 0;
 }
 
-static int ath12k_mac_op_get_txpower(struct ieee80211_hw *hw,
-				     struct ieee80211_vif *vif,
-				     unsigned int link_id,
-				     int *dbm)
+int ath12k_mac_op_get_txpower(struct ieee80211_hw *hw,
+			      struct ieee80211_vif *vif,
+			      unsigned int link_id,
+			      int *dbm)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_fw_stats_req_params params = {};
@@ -4462,6 +4466,7 @@ err_fallback:
 		   *dbm);
 	return 0;
 }
+EXPORT_SYMBOL(ath12k_mac_op_get_txpower);
 
 static u8
 ath12k_mac_find_link_id_by_ar(struct ath12k_vif *ahvif, struct ath12k *ar)
@@ -4489,9 +4494,9 @@ ath12k_mac_find_link_id_by_ar(struct ath12k_vif *ahvif, struct ath12k *ar)
 	return ATH12K_DEFAULT_SCAN_LINK;
 }
 
-static int ath12k_mac_op_hw_scan(struct ieee80211_hw *hw,
-				 struct ieee80211_vif *vif,
-				 struct ieee80211_scan_request *hw_req)
+int ath12k_mac_op_hw_scan(struct ieee80211_hw *hw,
+			  struct ieee80211_vif *vif,
+			  struct ieee80211_scan_request *hw_req)
 {
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
 	struct ath12k *ar;
@@ -4664,9 +4669,10 @@ exit:
 
 	return ret;
 }
+EXPORT_SYMBOL(ath12k_mac_op_hw_scan);
 
-static void ath12k_mac_op_cancel_hw_scan(struct ieee80211_hw *hw,
-					 struct ieee80211_vif *vif)
+void ath12k_mac_op_cancel_hw_scan(struct ieee80211_hw *hw,
+				  struct ieee80211_vif *vif)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	u16 link_id = ahvif->last_scan_link;
@@ -4685,6 +4691,7 @@ static void ath12k_mac_op_cancel_hw_scan(struct ieee80211_hw *hw,
 
 	cancel_delayed_work_sync(&ar->scan.timeout);
 }
+EXPORT_SYMBOL(ath12k_mac_op_cancel_hw_scan);
 
 static int ath12k_install_key(struct ath12k_link_vif *arvif,
 			      struct ieee80211_key_conf *key,
@@ -4950,9 +4957,9 @@ static int ath12k_mac_update_key_cache(struct ath12k_vif_cache *cache,
 	return 0;
 }
 
-static int ath12k_mac_op_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
-				 struct ieee80211_vif *vif, struct ieee80211_sta *sta,
-				 struct ieee80211_key_conf *key)
+int ath12k_mac_op_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
+			  struct ieee80211_vif *vif, struct ieee80211_sta *sta,
+			  struct ieee80211_key_conf *key)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_link_vif *arvif;
@@ -5043,6 +5050,7 @@ static int ath12k_mac_op_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 
 	return 0;
 }
+EXPORT_SYMBOL(ath12k_mac_op_set_key);
 
 static int
 ath12k_mac_bitrate_mask_num_vht_rates(struct ath12k *ar,
@@ -5843,11 +5851,11 @@ exit:
 	return ret;
 }
 
-static int ath12k_mac_op_sta_state(struct ieee80211_hw *hw,
-				   struct ieee80211_vif *vif,
-				   struct ieee80211_sta *sta,
-				   enum ieee80211_sta_state old_state,
-				   enum ieee80211_sta_state new_state)
+int ath12k_mac_op_sta_state(struct ieee80211_hw *hw,
+			    struct ieee80211_vif *vif,
+			    struct ieee80211_sta *sta,
+			    enum ieee80211_sta_state old_state,
+			    enum ieee80211_sta_state new_state)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_sta *ahsta = ath12k_sta_to_ahsta(sta);
@@ -5968,10 +5976,11 @@ exit:
 
 	return ret;
 }
+EXPORT_SYMBOL(ath12k_mac_op_sta_state);
 
-static int ath12k_mac_op_sta_set_txpwr(struct ieee80211_hw *hw,
-				       struct ieee80211_vif *vif,
-				       struct ieee80211_sta *sta)
+int ath12k_mac_op_sta_set_txpwr(struct ieee80211_hw *hw,
+				struct ieee80211_vif *vif,
+				struct ieee80211_sta *sta)
 {
 	struct ath12k_sta *ahsta = ath12k_sta_to_ahsta(sta);
 	struct ath12k *ar;
@@ -6018,11 +6027,12 @@ static int ath12k_mac_op_sta_set_txpwr(struct ieee80211_hw *hw,
 out:
 	return ret;
 }
+EXPORT_SYMBOL(ath12k_mac_op_sta_set_txpwr);
 
-static void ath12k_mac_op_link_sta_rc_update(struct ieee80211_hw *hw,
-					     struct ieee80211_vif *vif,
-					     struct ieee80211_link_sta *link_sta,
-					     u32 changed)
+void ath12k_mac_op_link_sta_rc_update(struct ieee80211_hw *hw,
+				      struct ieee80211_vif *vif,
+				      struct ieee80211_link_sta *link_sta,
+				      u32 changed)
 {
 	struct ieee80211_sta *sta = link_sta->sta;
 	struct ath12k *ar;
@@ -6126,6 +6136,7 @@ static void ath12k_mac_op_link_sta_rc_update(struct ieee80211_hw *hw,
 
 	rcu_read_unlock();
 }
+EXPORT_SYMBOL(ath12k_mac_op_link_sta_rc_update);
 
 static struct ath12k_link_sta *ath12k_mac_alloc_assign_link_sta(struct ath12k_hw *ah,
 								struct ath12k_sta *ahsta,
@@ -6157,10 +6168,10 @@ static struct ath12k_link_sta *ath12k_mac_alloc_assign_link_sta(struct ath12k_hw
 	return arsta;
 }
 
-static int ath12k_mac_op_change_sta_links(struct ieee80211_hw *hw,
-					  struct ieee80211_vif *vif,
-					  struct ieee80211_sta *sta,
-					  u16 old_links, u16 new_links)
+int ath12k_mac_op_change_sta_links(struct ieee80211_hw *hw,
+				   struct ieee80211_vif *vif,
+				   struct ieee80211_sta *sta,
+				   u16 old_links, u16 new_links)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_sta *ahsta = ath12k_sta_to_ahsta(sta);
@@ -6221,15 +6232,17 @@ static int ath12k_mac_op_change_sta_links(struct ieee80211_hw *hw,
 
 	return 0;
 }
+EXPORT_SYMBOL(ath12k_mac_op_change_sta_links);
 
-static bool ath12k_mac_op_can_activate_links(struct ieee80211_hw *hw,
-					     struct ieee80211_vif *vif,
-					     u16 active_links)
+bool ath12k_mac_op_can_activate_links(struct ieee80211_hw *hw,
+				      struct ieee80211_vif *vif,
+				      u16 active_links)
 {
 	/* TODO: Handle recovery case */
 
 	return true;
 }
+EXPORT_SYMBOL(ath12k_mac_op_can_activate_links);
 
 static int ath12k_conf_tx_uapsd(struct ath12k_link_vif *arvif,
 				u16 ac, bool enable)
@@ -6341,10 +6354,10 @@ exit:
 	return ret;
 }
 
-static int ath12k_mac_op_conf_tx(struct ieee80211_hw *hw,
-				 struct ieee80211_vif *vif,
-				 unsigned int link_id, u16 ac,
-				 const struct ieee80211_tx_queue_params *params)
+int ath12k_mac_op_conf_tx(struct ieee80211_hw *hw,
+			  struct ieee80211_vif *vif,
+			  unsigned int link_id, u16 ac,
+			  const struct ieee80211_tx_queue_params *params)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_link_vif *arvif;
@@ -6373,6 +6386,7 @@ static int ath12k_mac_op_conf_tx(struct ieee80211_hw *hw,
 
 	return ret;
 }
+EXPORT_SYMBOL(ath12k_mac_op_conf_tx);
 
 static struct ieee80211_sta_ht_cap
 ath12k_create_ht_cap(struct ath12k *ar, u32 ar_ht_cap, u32 rate_cap_rx_chainmask)
@@ -7434,9 +7448,9 @@ static u8 ath12k_mac_get_tx_link(struct ieee80211_sta *sta, struct ieee80211_vif
 }
 
 /* Note: called under rcu_read_lock() */
-static void ath12k_mac_op_tx(struct ieee80211_hw *hw,
-			     struct ieee80211_tx_control *control,
-			     struct sk_buff *skb)
+void ath12k_mac_op_tx(struct ieee80211_hw *hw,
+		      struct ieee80211_tx_control *control,
+		      struct sk_buff *skb)
 {
 	struct ath12k_skb_cb *skb_cb = ATH12K_SKB_CB(skb);
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
@@ -7604,6 +7618,7 @@ skip_peer_find:
 		ieee80211_free_txskb(ar->ah->hw, skb);
 	}
 }
+EXPORT_SYMBOL(ath12k_mac_op_tx);
 
 void ath12k_mac_drain_tx(struct ath12k *ar)
 {
@@ -7773,7 +7788,7 @@ static void ath12k_drain_tx(struct ath12k_hw *ah)
 		ath12k_mac_drain_tx(ar);
 }
 
-static int ath12k_mac_op_start(struct ieee80211_hw *hw)
+int ath12k_mac_op_start(struct ieee80211_hw *hw)
 {
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
 	struct ath12k *ar;
@@ -7823,6 +7838,7 @@ fail_start:
 
 	return ret;
 }
+EXPORT_SYMBOL(ath12k_mac_op_start);
 
 int ath12k_mac_rfkill_config(struct ath12k *ar)
 {
@@ -7919,7 +7935,7 @@ static void ath12k_mac_stop(struct ath12k *ar)
 	atomic_set(&ar->num_pending_mgmt_tx, 0);
 }
 
-static void ath12k_mac_op_stop(struct ieee80211_hw *hw, bool suspend)
+void ath12k_mac_op_stop(struct ieee80211_hw *hw, bool suspend)
 {
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
 	struct ath12k *ar;
@@ -7938,6 +7954,7 @@ static void ath12k_mac_op_stop(struct ieee80211_hw *hw, bool suspend)
 
 	mutex_unlock(&ah->hw_mutex);
 }
+EXPORT_SYMBOL(ath12k_mac_op_stop);
 
 static u8
 ath12k_mac_get_vdev_stats_id(struct ath12k_link_vif *arvif)
@@ -8168,8 +8185,8 @@ static void ath12k_mac_update_vif_offload(struct ath12k_link_vif *arvif)
 	}
 }
 
-static void ath12k_mac_op_update_vif_offload(struct ieee80211_hw *hw,
-					     struct ieee80211_vif *vif)
+void ath12k_mac_op_update_vif_offload(struct ieee80211_hw *hw,
+				      struct ieee80211_vif *vif)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_link_vif *arvif;
@@ -8193,6 +8210,7 @@ static void ath12k_mac_op_update_vif_offload(struct ieee80211_hw *hw,
 
 	ath12k_mac_update_vif_offload(&ahvif->deflink);
 }
+EXPORT_SYMBOL(ath12k_mac_op_update_vif_offload);
 
 static bool ath12k_mac_vif_ap_active_any(struct ath12k_base *ab)
 {
@@ -8733,8 +8751,8 @@ unlock:
 	return arvif->ar;
 }
 
-static int ath12k_mac_op_add_interface(struct ieee80211_hw *hw,
-				       struct ieee80211_vif *vif)
+int ath12k_mac_op_add_interface(struct ieee80211_hw *hw,
+				struct ieee80211_vif *vif)
 {
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
@@ -8762,6 +8780,7 @@ static int ath12k_mac_op_add_interface(struct ieee80211_hw *hw,
 	 */
 	return 0;
 }
+EXPORT_SYMBOL(ath12k_mac_op_add_interface);
 
 static void ath12k_mac_vif_unref(struct ath12k_dp *dp, struct ieee80211_vif *vif)
 {
@@ -8850,8 +8869,8 @@ err_vdev_del:
 	return ret;
 }
 
-static void ath12k_mac_op_remove_interface(struct ieee80211_hw *hw,
-					   struct ieee80211_vif *vif)
+void ath12k_mac_op_remove_interface(struct ieee80211_hw *hw,
+				    struct ieee80211_vif *vif)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_link_vif *arvif;
@@ -8898,6 +8917,7 @@ static void ath12k_mac_op_remove_interface(struct ieee80211_hw *hw,
 		ath12k_mac_unassign_link_vif(arvif);
 	}
 }
+EXPORT_SYMBOL(ath12k_mac_op_remove_interface);
 
 /* FIXME: Has to be verified. */
 #define SUPPORTED_FILTERS			\
@@ -8909,10 +8929,10 @@ static void ath12k_mac_op_remove_interface(struct ieee80211_hw *hw,
 	FIF_PROBE_REQ |				\
 	FIF_FCSFAIL)
 
-static void ath12k_mac_op_configure_filter(struct ieee80211_hw *hw,
-					   unsigned int changed_flags,
-					   unsigned int *total_flags,
-					   u64 multicast)
+void ath12k_mac_op_configure_filter(struct ieee80211_hw *hw,
+				    unsigned int changed_flags,
+				    unsigned int *total_flags,
+				    u64 multicast)
 {
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
 	struct ath12k *ar;
@@ -8924,8 +8944,9 @@ static void ath12k_mac_op_configure_filter(struct ieee80211_hw *hw,
 	*total_flags &= SUPPORTED_FILTERS;
 	ar->filter_flags = *total_flags;
 }
+EXPORT_SYMBOL(ath12k_mac_op_configure_filter);
 
-static int ath12k_mac_op_get_antenna(struct ieee80211_hw *hw, u32 *tx_ant, u32 *rx_ant)
+int ath12k_mac_op_get_antenna(struct ieee80211_hw *hw, u32 *tx_ant, u32 *rx_ant)
 {
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
 	int antennas_rx = 0, antennas_tx = 0;
@@ -8944,8 +8965,9 @@ static int ath12k_mac_op_get_antenna(struct ieee80211_hw *hw, u32 *tx_ant, u32 *
 
 	return 0;
 }
+EXPORT_SYMBOL(ath12k_mac_op_get_antenna);
 
-static int ath12k_mac_op_set_antenna(struct ieee80211_hw *hw, u32 tx_ant, u32 rx_ant)
+int ath12k_mac_op_set_antenna(struct ieee80211_hw *hw, u32 tx_ant, u32 rx_ant)
 {
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
 	struct ath12k *ar;
@@ -8962,6 +8984,7 @@ static int ath12k_mac_op_set_antenna(struct ieee80211_hw *hw, u32 tx_ant, u32 rx
 
 	return ret;
 }
+EXPORT_SYMBOL(ath12k_mac_op_set_antenna);
 
 static int ath12k_mac_ampdu_action(struct ieee80211_hw *hw,
 				   struct ieee80211_vif *vif,
@@ -9003,9 +9026,9 @@ static int ath12k_mac_ampdu_action(struct ieee80211_hw *hw,
 	return ret;
 }
 
-static int ath12k_mac_op_ampdu_action(struct ieee80211_hw *hw,
-				      struct ieee80211_vif *vif,
-				      struct ieee80211_ampdu_params *params)
+int ath12k_mac_op_ampdu_action(struct ieee80211_hw *hw,
+			       struct ieee80211_vif *vif,
+			       struct ieee80211_ampdu_params *params)
 {
 	struct ieee80211_sta *sta = params->sta;
 	struct ath12k_sta *ahsta = ath12k_sta_to_ahsta(sta);
@@ -9026,9 +9049,10 @@ static int ath12k_mac_op_ampdu_action(struct ieee80211_hw *hw,
 
 	return 0;
 }
+EXPORT_SYMBOL(ath12k_mac_op_ampdu_action);
 
-static int ath12k_mac_op_add_chanctx(struct ieee80211_hw *hw,
-				     struct ieee80211_chanctx_conf *ctx)
+int ath12k_mac_op_add_chanctx(struct ieee80211_hw *hw,
+			      struct ieee80211_chanctx_conf *ctx)
 {
 	struct ath12k *ar;
 	struct ath12k_base *ab;
@@ -9055,9 +9079,10 @@ static int ath12k_mac_op_add_chanctx(struct ieee80211_hw *hw,
 
 	return 0;
 }
+EXPORT_SYMBOL(ath12k_mac_op_add_chanctx);
 
-static void ath12k_mac_op_remove_chanctx(struct ieee80211_hw *hw,
-					 struct ieee80211_chanctx_conf *ctx)
+void ath12k_mac_op_remove_chanctx(struct ieee80211_hw *hw,
+				  struct ieee80211_chanctx_conf *ctx)
 {
 	struct ath12k *ar;
 	struct ath12k_base *ab;
@@ -9082,6 +9107,7 @@ static void ath12k_mac_op_remove_chanctx(struct ieee80211_hw *hw,
 	spin_unlock_bh(&ar->data_lock);
 	ar->chan_tx_pwr = ATH12K_PDEV_TX_POWER_INVALID;
 }
+EXPORT_SYMBOL(ath12k_mac_op_remove_chanctx);
 
 static enum wmi_phy_mode
 ath12k_mac_check_down_grade_phy_mode(struct ath12k *ar,
@@ -9629,9 +9655,9 @@ ath12k_mac_update_active_vif_chan(struct ath12k *ar,
 	kfree(arg.vifs);
 }
 
-static void ath12k_mac_op_change_chanctx(struct ieee80211_hw *hw,
-					 struct ieee80211_chanctx_conf *ctx,
-					 u32 changed)
+void ath12k_mac_op_change_chanctx(struct ieee80211_hw *hw,
+				  struct ieee80211_chanctx_conf *ctx,
+				  u32 changed)
 {
 	struct ath12k *ar;
 	struct ath12k_base *ab;
@@ -9661,6 +9687,7 @@ static void ath12k_mac_op_change_chanctx(struct ieee80211_hw *hw,
 
 	/* TODO: Recalc radar detection */
 }
+EXPORT_SYMBOL(ath12k_mac_op_change_chanctx);
 
 static int ath12k_start_vdev_delay(struct ath12k *ar,
 				   struct ath12k_link_vif *arvif)
@@ -9705,7 +9732,7 @@ static int ath12k_start_vdev_delay(struct ath12k *ar,
 	return 0;
 }
 
-static int
+int
 ath12k_mac_op_assign_vif_chanctx(struct ieee80211_hw *hw,
 				 struct ieee80211_vif *vif,
 				 struct ieee80211_bss_conf *link_conf,
@@ -9785,8 +9812,9 @@ ath12k_mac_op_assign_vif_chanctx(struct ieee80211_hw *hw,
 out:
 	return ret;
 }
+EXPORT_SYMBOL(ath12k_mac_op_assign_vif_chanctx);
 
-static void
+void
 ath12k_mac_op_unassign_vif_chanctx(struct ieee80211_hw *hw,
 				   struct ieee80211_vif *vif,
 				   struct ieee80211_bss_conf *link_conf,
@@ -9848,8 +9876,9 @@ ath12k_mac_op_unassign_vif_chanctx(struct ieee80211_hw *hw,
 		ar->state_11d = ATH12K_11D_PREPARING;
 	}
 }
+EXPORT_SYMBOL(ath12k_mac_op_unassign_vif_chanctx);
 
-static int
+int
 ath12k_mac_op_switch_vif_chanctx(struct ieee80211_hw *hw,
 				 struct ieee80211_vif_chanctx_switch *vifs,
 				 int n_vifs,
@@ -9874,6 +9903,7 @@ ath12k_mac_op_switch_vif_chanctx(struct ieee80211_hw *hw,
 
 	return 0;
 }
+EXPORT_SYMBOL(ath12k_mac_op_switch_vif_chanctx);
 
 static int
 ath12k_set_vdev_param_to_all_vifs(struct ath12k *ar, int param, u32 value)
@@ -9902,7 +9932,7 @@ ath12k_set_vdev_param_to_all_vifs(struct ath12k *ar, int param, u32 value)
 /* mac80211 stores device specific RTS/Fragmentation threshold value,
  * this is set interface specific to firmware from ath12k driver
  */
-static int ath12k_mac_op_set_rts_threshold(struct ieee80211_hw *hw, u32 value)
+int ath12k_mac_op_set_rts_threshold(struct ieee80211_hw *hw, u32 value)
 {
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
 	struct ath12k *ar;
@@ -9926,8 +9956,9 @@ static int ath12k_mac_op_set_rts_threshold(struct ieee80211_hw *hw, u32 value)
 
 	return ret;
 }
+EXPORT_SYMBOL(ath12k_mac_op_set_rts_threshold);
 
-static int ath12k_mac_op_set_frag_threshold(struct ieee80211_hw *hw, u32 value)
+int ath12k_mac_op_set_frag_threshold(struct ieee80211_hw *hw, u32 value)
 {
 	/* Even though there's a WMI vdev param for fragmentation threshold no
 	 * known firmware actually implements it. Moreover it is not possible to
@@ -9944,6 +9975,7 @@ static int ath12k_mac_op_set_frag_threshold(struct ieee80211_hw *hw, u32 value)
 
 	return -EOPNOTSUPP;
 }
+EXPORT_SYMBOL(ath12k_mac_op_set_frag_threshold);
 
 static int ath12k_mac_flush(struct ath12k *ar)
 {
@@ -9981,8 +10013,8 @@ int ath12k_mac_wait_tx_complete(struct ath12k *ar)
 	return ath12k_mac_flush(ar);
 }
 
-static void ath12k_mac_op_flush(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
-				u32 queues, bool drop)
+void ath12k_mac_op_flush(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+			 u32 queues, bool drop)
 {
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
 	struct ath12k_link_vif *arvif;
@@ -10017,6 +10049,7 @@ static void ath12k_mac_op_flush(struct ieee80211_hw *hw, struct ieee80211_vif *v
 		ath12k_mac_flush(arvif->ar);
 	}
 }
+EXPORT_SYMBOL(ath12k_mac_op_flush);
 
 static int
 ath12k_mac_bitrate_mask_num_ht_rates(struct ath12k *ar,
@@ -10255,7 +10288,7 @@ static void ath12k_mac_disable_peer_fixed_rate(void *data,
 			    arsta->addr, ret);
 }
 
-static int
+int
 ath12k_mac_op_set_bitrate_mask(struct ieee80211_hw *hw,
 			       struct ieee80211_vif *vif,
 			       const struct cfg80211_bitrate_mask *mask)
@@ -10377,8 +10410,9 @@ ath12k_mac_op_set_bitrate_mask(struct ieee80211_hw *hw,
 out:
 	return ret;
 }
+EXPORT_SYMBOL(ath12k_mac_op_set_bitrate_mask);
 
-static void
+void
 ath12k_mac_op_reconfig_complete(struct ieee80211_hw *hw,
 				enum ieee80211_reconfig_type reconfig_type)
 {
@@ -10458,6 +10492,7 @@ ath12k_mac_op_reconfig_complete(struct ieee80211_hw *hw,
 		}
 	}
 }
+EXPORT_SYMBOL(ath12k_mac_op_reconfig_complete);
 
 static void
 ath12k_mac_update_bss_chan_survey(struct ath12k *ar,
@@ -10491,8 +10526,8 @@ ath12k_mac_update_bss_chan_survey(struct ath12k *ar,
 		ath12k_warn(ar->ab, "bss channel survey timed out\n");
 }
 
-static int ath12k_mac_op_get_survey(struct ieee80211_hw *hw, int idx,
-				    struct survey_info *survey)
+int ath12k_mac_op_get_survey(struct ieee80211_hw *hw, int idx,
+			     struct survey_info *survey)
 {
 	struct ath12k *ar;
 	struct ieee80211_supported_band *sband;
@@ -10546,11 +10581,12 @@ static int ath12k_mac_op_get_survey(struct ieee80211_hw *hw, int idx,
 
 	return 0;
 }
+EXPORT_SYMBOL(ath12k_mac_op_get_survey);
 
-static void ath12k_mac_op_sta_statistics(struct ieee80211_hw *hw,
-					 struct ieee80211_vif *vif,
-					 struct ieee80211_sta *sta,
-					 struct station_info *sinfo)
+void ath12k_mac_op_sta_statistics(struct ieee80211_hw *hw,
+				  struct ieee80211_vif *vif,
+				  struct ieee80211_sta *sta,
+				  struct station_info *sinfo)
 {
 	struct ath12k_sta *ahsta = ath12k_sta_to_ahsta(sta);
 	struct ath12k_fw_stats_req_params params = {};
@@ -10616,9 +10652,10 @@ static void ath12k_mac_op_sta_statistics(struct ieee80211_hw *hw,
 
 	sinfo->filled |= BIT_ULL(NL80211_STA_INFO_SIGNAL_AVG);
 }
+EXPORT_SYMBOL(ath12k_mac_op_sta_statistics);
 
-static int ath12k_mac_op_cancel_remain_on_channel(struct ieee80211_hw *hw,
-						  struct ieee80211_vif *vif)
+int ath12k_mac_op_cancel_remain_on_channel(struct ieee80211_hw *hw,
+					   struct ieee80211_vif *vif)
 {
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
 	struct ath12k *ar;
@@ -10638,12 +10675,13 @@ static int ath12k_mac_op_cancel_remain_on_channel(struct ieee80211_hw *hw,
 
 	return 0;
 }
+EXPORT_SYMBOL(ath12k_mac_op_cancel_remain_on_channel);
 
-static int ath12k_mac_op_remain_on_channel(struct ieee80211_hw *hw,
-					   struct ieee80211_vif *vif,
-					   struct ieee80211_channel *chan,
-					   int duration,
-					   enum ieee80211_roc_type type)
+int ath12k_mac_op_remain_on_channel(struct ieee80211_hw *hw,
+				    struct ieee80211_vif *vif,
+				    struct ieee80211_channel *chan,
+				    int duration,
+				    enum ieee80211_roc_type type)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_hw *ah = ath12k_hw_to_ah(hw);
@@ -10777,10 +10815,11 @@ static int ath12k_mac_op_remain_on_channel(struct ieee80211_hw *hw,
 
 	return 0;
 }
+EXPORT_SYMBOL(ath12k_mac_op_remain_on_channel);
 
-static void ath12k_mac_op_set_rekey_data(struct ieee80211_hw *hw,
-					 struct ieee80211_vif *vif,
-					 struct cfg80211_gtk_rekey_data *data)
+void ath12k_mac_op_set_rekey_data(struct ieee80211_hw *hw,
+				  struct ieee80211_vif *vif,
+				  struct cfg80211_gtk_rekey_data *data)
 {
 	struct ath12k_vif *ahvif = ath12k_vif_to_ahvif(vif);
 	struct ath12k_rekey_data *rekey_data;
@@ -10813,62 +10852,7 @@ static void ath12k_mac_op_set_rekey_data(struct ieee80211_hw *hw,
 	ath12k_dbg_dump(ar->ab, ATH12K_DBG_MAC, "replay ctr", NULL,
 			&rekey_data->replay_ctr, sizeof(rekey_data->replay_ctr));
 }
-
-static const struct ieee80211_ops ath12k_ops = {
-	.tx				= ath12k_mac_op_tx,
-	.wake_tx_queue			= ieee80211_handle_wake_tx_queue,
-	.start                          = ath12k_mac_op_start,
-	.stop                           = ath12k_mac_op_stop,
-	.reconfig_complete              = ath12k_mac_op_reconfig_complete,
-	.add_interface                  = ath12k_mac_op_add_interface,
-	.remove_interface		= ath12k_mac_op_remove_interface,
-	.update_vif_offload		= ath12k_mac_op_update_vif_offload,
-	.config                         = ath12k_mac_op_config,
-	.link_info_changed              = ath12k_mac_op_link_info_changed,
-	.vif_cfg_changed		= ath12k_mac_op_vif_cfg_changed,
-	.change_vif_links               = ath12k_mac_op_change_vif_links,
-	.configure_filter		= ath12k_mac_op_configure_filter,
-	.hw_scan                        = ath12k_mac_op_hw_scan,
-	.cancel_hw_scan                 = ath12k_mac_op_cancel_hw_scan,
-	.set_key                        = ath12k_mac_op_set_key,
-	.set_rekey_data	                = ath12k_mac_op_set_rekey_data,
-	.sta_state                      = ath12k_mac_op_sta_state,
-	.sta_set_txpwr			= ath12k_mac_op_sta_set_txpwr,
-	.link_sta_rc_update		= ath12k_mac_op_link_sta_rc_update,
-	.conf_tx                        = ath12k_mac_op_conf_tx,
-	.set_antenna			= ath12k_mac_op_set_antenna,
-	.get_antenna			= ath12k_mac_op_get_antenna,
-	.ampdu_action			= ath12k_mac_op_ampdu_action,
-	.add_chanctx			= ath12k_mac_op_add_chanctx,
-	.remove_chanctx			= ath12k_mac_op_remove_chanctx,
-	.change_chanctx			= ath12k_mac_op_change_chanctx,
-	.assign_vif_chanctx		= ath12k_mac_op_assign_vif_chanctx,
-	.unassign_vif_chanctx		= ath12k_mac_op_unassign_vif_chanctx,
-	.switch_vif_chanctx		= ath12k_mac_op_switch_vif_chanctx,
-	.get_txpower			= ath12k_mac_op_get_txpower,
-	.set_rts_threshold		= ath12k_mac_op_set_rts_threshold,
-	.set_frag_threshold		= ath12k_mac_op_set_frag_threshold,
-	.set_bitrate_mask		= ath12k_mac_op_set_bitrate_mask,
-	.get_survey			= ath12k_mac_op_get_survey,
-	.flush				= ath12k_mac_op_flush,
-	.sta_statistics			= ath12k_mac_op_sta_statistics,
-	.remain_on_channel              = ath12k_mac_op_remain_on_channel,
-	.cancel_remain_on_channel       = ath12k_mac_op_cancel_remain_on_channel,
-	.change_sta_links               = ath12k_mac_op_change_sta_links,
-	.can_activate_links             = ath12k_mac_op_can_activate_links,
-#ifdef CONFIG_PM
-	.suspend			= ath12k_wow_op_suspend,
-	.resume				= ath12k_wow_op_resume,
-	.set_wakeup			= ath12k_wow_op_set_wakeup,
-#endif
-#ifdef CONFIG_ATH12K_DEBUGFS
-	.vif_add_debugfs                = ath12k_debugfs_op_vif_add,
-#endif
-	CFG80211_TESTMODE_CMD(ath12k_tm_cmd)
-#ifdef CONFIG_ATH12K_DEBUGFS
-	.link_sta_add_debugfs           = ath12k_debugfs_link_sta_op_add,
-#endif
-};
+EXPORT_SYMBOL(ath12k_mac_op_set_rekey_data);
 
 void ath12k_mac_update_freq_range(struct ath12k *ar,
 				  u32 freq_low, u32 freq_high)
@@ -11926,7 +11910,7 @@ static struct ath12k_hw *ath12k_mac_hw_allocate(struct ath12k_hw_group *ag,
 	u8 pdev_idx;
 
 	hw = ieee80211_alloc_hw(struct_size(ah, radio, num_pdev_map),
-				&ath12k_ops);
+				pdev_map[0].ab->ath12k_ops);
 	if (!hw)
 		return NULL;
 

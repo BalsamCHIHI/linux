@@ -918,6 +918,7 @@ cleanup:
 exit:
 	return ret ? 1 : 0;
 }
+EXPORT_SYMBOL(ath12k_wow_op_suspend);
 
 void ath12k_wow_op_set_wakeup(struct ieee80211_hw *hw, bool enabled)
 {
@@ -928,6 +929,7 @@ void ath12k_wow_op_set_wakeup(struct ieee80211_hw *hw, bool enabled)
 
 	device_set_wakeup_enable(ar->ab->dev, enabled);
 }
+EXPORT_SYMBOL(ath12k_wow_op_set_wakeup);
 
 int ath12k_wow_op_resume(struct ieee80211_hw *hw)
 {
@@ -1000,6 +1002,7 @@ exit:
 
 	return ret;
 }
+EXPORT_SYMBOL(ath12k_wow_op_resume);
 
 int ath12k_wow_init(struct ath12k *ar)
 {

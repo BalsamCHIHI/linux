@@ -393,3 +393,4 @@ int ath12k_tm_cmd(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		return -EOPNOTSUPP;
 	}
 }
+EXPORT_SYMBOL(ath12k_tm_cmd);

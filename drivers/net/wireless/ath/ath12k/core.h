@@ -1153,6 +1153,8 @@ struct ath12k_base {
 	struct ath12k_reg_freq reg_freq_5ghz;
 	struct ath12k_reg_freq reg_freq_6ghz;
 
+	const struct ieee80211_ops *ath12k_ops;
+
 	/* must be last */
 	u8 drv_priv[] __aligned(sizeof(void *));
 };

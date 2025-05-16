@@ -335,3 +335,4 @@ void ath12k_debugfs_link_sta_op_add(struct ieee80211_hw *hw,
 				    &fops_reset_rx_stats);
 	}
 }
+EXPORT_SYMBOL(ath12k_debugfs_link_sta_op_add);
