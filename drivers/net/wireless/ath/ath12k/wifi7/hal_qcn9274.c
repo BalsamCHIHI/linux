@@ -96,3 +96,36 @@ void ath12k_hal_rx_desc_get_dot11_hdr_qcn9274(struct hal_rx_desc *desc,
 	}
 	hdr->seq_ctrl = desc->u.qcn9274_compact.mpdu_start.seq_ctrl;
 }
+
+void ath12k_hal_extract_rx_desc_data_qcn9274(struct hal_rx_desc_data *rx_desc_data,
+					     struct hal_rx_desc *rx_desc,
+					     struct hal_rx_desc *ldesc)
+{
+	rx_desc_data->msdu_done = ath12k_hal_rx_h_msdu_done_qcn9274(ldesc);
+	rx_desc_data->msdu_len = ath12k_hal_rx_h_msdu_len_qcn9274(ldesc);
+	rx_desc_data->l3_pad_bytes = ath12k_hal_rx_h_l3pad_qcn9274(ldesc);
+	rx_desc_data->is_first_msdu = ath12k_hal_rx_h_first_msdu_qcn9274(ldesc);
+	rx_desc_data->is_last_msdu = ath12k_hal_rx_h_last_msdu_qcn9274(ldesc);
+	rx_desc_data->phy_meta_data = ath12k_hal_rx_h_freq_qcn9274(rx_desc);
+	rx_desc_data->pkt_type = ath12k_hal_rx_h_pkt_type_qcn9274(rx_desc);
+	rx_desc_data->bw = ath12k_hal_rx_h_rx_bw_qcn9274(rx_desc);
+	rx_desc_data->rate_mcs = ath12k_hal_rx_h_rate_mcs_qcn9274(rx_desc);
+	rx_desc_data->nss = hweight8(ath12k_hal_rx_h_nss_qcn9274(rx_desc));
+	rx_desc_data->sgi = ath12k_hal_rx_h_sgi_qcn9274(rx_desc);
+	rx_desc_data->is_mcbc = ath12k_hal_rx_h_is_da_mcbc_qcn9274(rx_desc);
+	rx_desc_data->seq_no = ath12k_hal_rx_h_seq_no_qcn9274(rx_desc);
+	rx_desc_data->peer_id = ath12k_hal_rx_h_peer_id_qcn9274(rx_desc);
+	rx_desc_data->err_bitmap = ath12k_hal_rx_h_mpdu_err_qcn9274(rx_desc);
+	rx_desc_data->is_decrypted = ath12k_hal_rx_h_is_decrypted_qcn9274(rx_desc);
+	rx_desc_data->decap_type = ath12k_hal_rx_h_decap_type_qcn9274(rx_desc);
+	rx_desc_data->ip_csum_fail = ath12k_hal_rx_h_ip_cksum_fail_qcn9274(rx_desc);
+	rx_desc_data->l4_csum_fail = ath12k_hal_rx_h_l4_cksum_fail_qcn9274(rx_desc);
+	rx_desc_data->tid = ath12k_hal_rx_h_tid_qcn9274(rx_desc);
+	rx_desc_data->addr2_present = ath12k_hal_rxdesc_mac_addr2_valid_qcn9274(rx_desc);
+	rx_desc_data->addr2 = ath12k_hal_rxdesc_get_mpdu_start_addr2_qcn9274(rx_desc);
+	rx_desc_data->mesh_ctrl_present =
+				ath12k_hal_rx_h_mesh_ctl_present_qcn9274(rx_desc);
+	rx_desc_data->seq_ctl_valid = ath12k_hal_rx_h_seq_ctrl_valid_qcn9274(rx_desc);
+	rx_desc_data->fc_valid = ath12k_hal_rx_h_fc_valid_qcn9274(rx_desc);
+	rx_desc_data->enctype = ath12k_hal_rx_h_enctype_qcn9274(rx_desc);
+}

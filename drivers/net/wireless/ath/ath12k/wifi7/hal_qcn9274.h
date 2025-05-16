@@ -16,6 +16,9 @@ void ath12k_hal_rx_desc_get_crypto_header_qcn9274(struct hal_rx_desc *desc,
 						  enum hal_encrypt_type encyp);
 void ath12k_hal_rx_desc_get_dot11_hdr_qcn9274(struct hal_rx_desc *desc,
 					      struct ieee80211_hdr *hdr);
+void ath12k_hal_extract_rx_desc_data_qcn9274(struct hal_rx_desc_data *rx_desc_data,
+					     struct hal_rx_desc *rx_desc,
+					     struct hal_rx_desc *ldesc);
 
 static inline
 bool ath12k_hal_rx_h_first_msdu_qcn9274(struct hal_rx_desc *desc)

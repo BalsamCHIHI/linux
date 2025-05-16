@@ -6,6 +6,7 @@
 
 #include "dp_mon.h"
 #include "debug.h"
+#include "wifi7/hal_qcn9274.h"
 #include "wifi7/dp_rx.h"
 #include "dp_tx.h"
 #include "peer.h"
@@ -1872,8 +1873,7 @@ ath12k_dp_mon_rx_merg_msdus(struct ath12k *ar,
 		u8 qos_pkt = 0;
 
 		rx_desc = (struct hal_rx_desc *)head_msdu->data;
-		hdr_desc =
-			ab->hal_rx_ops->rx_desc_get_msdu_payload(rx_desc);
+		hdr_desc = ath12k_hal_rx_desc_get_msdu_payload_qcn9274(rx_desc);
 
 		/* Base size */
 		wh = (struct ieee80211_hdr_3addr *)hdr_desc;
@@ -2080,9 +2080,10 @@ static void ath12k_dp_mon_rx_deliver_msdu(struct ath12k *ar, struct napi_struct 
 	struct ieee80211_sta *pubsta = NULL;
 	struct ath12k_peer *peer;
 	struct ath12k_skb_rxcb *rxcb = ATH12K_SKB_RXCB(msdu);
-	struct ath12k_dp_rx_info rx_info;
+	struct hal_rx_desc_data rx_info;
 	bool is_mcbc = rxcb->is_mcbc;
 	bool is_eapol_tkip = rxcb->is_eapol;
+	struct hal_rx_desc *rx_desc = (struct hal_rx_desc *)msdu->data;
 
 	status->link_valid = 0;
 
@@ -2092,6 +2093,8 @@ static void ath12k_dp_mon_rx_deliver_msdu(struct ath12k *ar, struct napi_struct 
 		memcpy(he, &known, sizeof(known));
 		status->flag |= RX_FLAG_RADIOTAP_HE;
 	}
+
+	ath12k_wifi7_dp_extract_rx_desc_data(ar->ab, &rx_info, rx_desc, rx_desc);
 
 	spin_lock_bh(&ar->ab->base_lock);
 	rx_info.addr2_present = false;

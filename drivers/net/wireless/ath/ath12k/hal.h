@@ -1016,6 +1016,36 @@ struct hal_rx_mon_ppdu_info {
 	struct hal_rx_tlv_aggr_info tlv_aggr;
 };
 
+struct hal_rx_desc_data {
+	struct ieee80211_rx_status *rx_status;
+	u32 phy_meta_data;
+	u32 err_bitmap;
+	u32 enctype;
+	u32 msdu_done:1,
+	    is_decrypted:1,
+	    ip_csum_fail:1,
+	    l4_csum_fail:1,
+	    is_first_msdu:1,
+	    is_last_msdu:1,
+	    mesh_ctrl_present:1,
+	    addr2_present:1,
+	    is_mcbc:1,
+	    seq_ctl_valid:1,
+	    fc_valid:1;
+	u16 msdu_len;
+	u16 peer_id;
+	u16 seq_no;
+	u8 *addr2;
+	u8 pkt_type;
+	u8 l3_pad_bytes;
+	u8 decap_type;
+	u8 bw;
+	u8 rate_mcs;
+	u8 nss;
+	u8 sgi;
+	u8 tid;
+};
+
 /* srng flags */
 #define HAL_SRNG_FLAGS_MSI_SWAP			0x00000008
 #define HAL_SRNG_FLAGS_RING_PTR_SWAP		0x00000010
@@ -1542,43 +1572,6 @@ enum nl80211_he_ru_alloc ath12k_he_ru_tones_to_nl80211_he_ru_alloc(u16 ru_tones)
 	return ret;
 }
 
-struct hal_rx_ops {
-	bool (*rx_desc_get_first_msdu)(struct hal_rx_desc *desc);
-	bool (*rx_desc_get_last_msdu)(struct hal_rx_desc *desc);
-	u8 (*rx_desc_get_l3_pad_bytes)(struct hal_rx_desc *desc);
-	u8 *(*rx_desc_get_hdr_status)(struct hal_rx_desc *desc);
-	bool (*rx_desc_encrypt_valid)(struct hal_rx_desc *desc);
-	u32 (*rx_desc_get_encrypt_type)(struct hal_rx_desc *desc);
-	u8 (*rx_desc_get_decap_type)(struct hal_rx_desc *desc);
-	u8 (*rx_desc_get_mesh_ctl)(struct hal_rx_desc *desc);
-	bool (*rx_desc_get_mpdu_seq_ctl_vld)(struct hal_rx_desc *desc);
-	bool (*rx_desc_get_mpdu_fc_valid)(struct hal_rx_desc *desc);
-	u16 (*rx_desc_get_mpdu_start_seq_no)(struct hal_rx_desc *desc);
-	u16 (*rx_desc_get_msdu_len)(struct hal_rx_desc *desc);
-	u8 (*rx_desc_get_msdu_sgi)(struct hal_rx_desc *desc);
-	u8 (*rx_desc_get_msdu_rate_mcs)(struct hal_rx_desc *desc);
-	u8 (*rx_desc_get_msdu_rx_bw)(struct hal_rx_desc *desc);
-	u32 (*rx_desc_get_msdu_freq)(struct hal_rx_desc *desc);
-	u8 (*rx_desc_get_msdu_pkt_type)(struct hal_rx_desc *desc);
-	u8 (*rx_desc_get_msdu_nss)(struct hal_rx_desc *desc);
-	u8 (*rx_desc_get_mpdu_tid)(struct hal_rx_desc *desc);
-	u16 (*rx_desc_get_mpdu_peer_id)(struct hal_rx_desc *desc);
-	u32 (*rx_desc_get_mpdu_start_tag)(struct hal_rx_desc *desc);
-	u32 (*rx_desc_get_mpdu_ppdu_id)(struct hal_rx_desc *desc);
-	struct rx_attention *(*rx_desc_get_attention)(struct hal_rx_desc *desc);
-	u8 *(*rx_desc_get_msdu_payload)(struct hal_rx_desc *desc);
-	u32 (*rx_desc_get_mpdu_start_offset)(void);
-	u32 (*rx_desc_get_msdu_end_offset)(void);
-	bool (*rx_desc_mac_addr2_valid)(struct hal_rx_desc *desc);
-	u8* (*rx_desc_mpdu_start_addr2)(struct hal_rx_desc *desc);
-	bool (*rx_desc_is_da_mcbc)(struct hal_rx_desc *desc);
-	bool (*dp_rx_h_msdu_done)(struct hal_rx_desc *desc);
-	bool (*dp_rx_h_l4_cksum_fail)(struct hal_rx_desc *desc);
-	bool (*dp_rx_h_ip_cksum_fail)(struct hal_rx_desc *desc);
-	bool (*dp_rx_h_is_decrypted)(struct hal_rx_desc *desc);
-	u32 (*dp_rx_h_mpdu_err)(struct hal_rx_desc *desc);
-};
-
 struct hal_ops {
 	int (*create_srng_config)(struct ath12k_base *ab);
 	const struct ath12k_hal_tcl_to_wbm_rbm_map *tcl_to_wbm_rbm_map;
@@ -1591,14 +1584,14 @@ struct hal_ops {
 	void (*rx_desc_copy_end_tlv)(struct hal_rx_desc *fdesc,
 				     struct hal_rx_desc *ldesc);
 	u8 (*rx_desc_get_msdu_src_link_id)(struct hal_rx_desc *desc);
+	void (*extract_rx_desc_data)(struct hal_rx_desc_data *rx_desc_data,
+				     struct hal_rx_desc *rx_desc,
+				     struct hal_rx_desc *ldesc);
 	u32 (*rx_desc_get_desc_size)(void);
 };
 
 extern const struct hal_ops hal_qcn9274_ops;
 extern const struct hal_ops hal_wcn7850_ops;
-
-extern const struct hal_rx_ops hal_rx_qcn9274_compact_ops;
-extern const struct hal_rx_ops hal_rx_wcn7850_ops;
 
 u32 ath12k_hal_reo_qdesc_size(u32 ba_window_size, u8 tid);
 void ath12k_hal_reo_qdesc_setup(struct hal_rx_reo_queue *qdesc,
