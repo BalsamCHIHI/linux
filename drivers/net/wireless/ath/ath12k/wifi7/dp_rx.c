@@ -1914,10 +1914,8 @@ int ath12k_dp_rxdma_ring_sel_config_qcn9274(struct ath12k_base *ab)
 	tlv_filter.rx_msdu_end_offset =
 		ath12k_hal_rx_desc_get_msdu_end_offset_qcn9274();
 
-	tlv_filter.rx_mpdu_start_wmask =
-		ab->hw_params->hal_ops->rxdma_ring_wmask_rx_mpdu_start();
-	tlv_filter.rx_msdu_end_wmask =
-		ab->hw_params->hal_ops->rxdma_ring_wmask_rx_msdu_end();
+	tlv_filter.rx_mpdu_start_wmask = ath12k_hal_rx_mpdu_start_wmask_get_qcn9274();
+	tlv_filter.rx_msdu_end_wmask = ath12k_hal_rx_msdu_end_wmask_get_qcn9274();
 	ath12k_dbg(ab, ATH12K_DBG_DATA,
 		   "Configuring compact tlv masks rx_mpdu_start_wmask 0x%x rx_msdu_end_wmask 0x%x\n",
 		   tlv_filter.rx_mpdu_start_wmask, tlv_filter.rx_msdu_end_wmask);

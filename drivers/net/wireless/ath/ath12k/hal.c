@@ -442,8 +442,6 @@ EXPORT_SYMBOL(hal_rx_qcn9274_compact_ops);
 
 const struct hal_ops hal_qcn9274_ops = {
 	.create_srng_config = ath12k_hal_srng_create_config_qcn9274,
-	.rxdma_ring_wmask_rx_mpdu_start = ath12k_hal_rx_mpdu_start_wmask_get_qcn9274,
-	.rxdma_ring_wmask_rx_msdu_end = ath12k_hal_rx_msdu_end_wmask_get_qcn9274,
 	.tcl_to_wbm_rbm_map = ath12k_hal_qcn9274_tcl_to_wbm_rbm_map,
 };
 EXPORT_SYMBOL(hal_qcn9274_ops);
@@ -616,8 +614,6 @@ EXPORT_SYMBOL(hal_rx_wcn7850_ops);
 const struct hal_ops hal_wcn7850_ops = {
 	.create_srng_config = ath12k_hal_srng_create_config_wcn7850,
 	.tcl_to_wbm_rbm_map = ath12k_hal_wcn7850_tcl_to_wbm_rbm_map,
-	.rxdma_ring_wmask_rx_mpdu_start = NULL,
-	.rxdma_ring_wmask_rx_msdu_end = NULL,
 };
 EXPORT_SYMBOL(hal_wcn7850_ops);
 

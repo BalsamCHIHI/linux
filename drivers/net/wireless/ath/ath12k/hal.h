@@ -1591,8 +1591,6 @@ struct hal_rx_ops {
 
 struct hal_ops {
 	int (*create_srng_config)(struct ath12k_base *ab);
-	u16 (*rxdma_ring_wmask_rx_mpdu_start)(void);
-	u32 (*rxdma_ring_wmask_rx_msdu_end)(void);
 	const struct ath12k_hal_tcl_to_wbm_rbm_map *tcl_to_wbm_rbm_map;
 };
 
