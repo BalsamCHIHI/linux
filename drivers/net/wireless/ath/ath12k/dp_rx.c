@@ -895,7 +895,8 @@ static void ath12k_get_dot11_hdr_from_rx_desc(struct ath12k *ar,
 	if (!(status->flag & RX_FLAG_IV_STRIPPED)) {
 		crypto_len = ath12k_dp_rx_crypto_param_len(ar, enctype);
 		crypto_hdr = skb_push(msdu, crypto_len);
-		ath12k_dp_rx_desc_get_crypto_header(ab, rx_desc, crypto_hdr, enctype);
+		ath12k_dp_rx_desc_get_crypto_header(ab, rx_desc, crypto_hdr,
+						    enctype);
 	}
 
 	skb_push(msdu, hdr_len);

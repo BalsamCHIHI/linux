@@ -43,6 +43,4 @@ int ath12k_peer_rx_tid_reo_update(struct ath12k *ar,
 				  struct ath12k_dp_rx_tid *rx_tid,
 				  u32 ba_win_sz, u16 ssn,
 				  bool update_ssn);
-int ath12k_dp_rxdma_ring_sel_config_qcn9274(struct ath12k_base *ab);
-int ath12k_dp_rxdma_ring_sel_config_wcn7850(struct ath12k_base *ab);
 #endif
