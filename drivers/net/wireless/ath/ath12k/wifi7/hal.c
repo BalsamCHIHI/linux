@@ -7,23 +7,29 @@
 #include "hal_desc.h"
 #include "../hal.h"
 #include "hal.h"
+#include "hal_wcn7850.h"
+#include "hal_qcn9274.h"
 
 static const struct ath12k_hw_version_map ath12k_wifi7_hw_ver_map[] = {
 	{
 		/* ATH12K_HW_QCN9274_HW10 */
 		.hal_desc_sz = sizeof(struct hal_rx_desc_qcn9274_compact),
+		.tcl_to_wbm_rbm_map = ath12k_hal_tcl_to_wbm_rbm_map_qcn9274,
 	},
 	{
 		/* ATH12K_HW_QCN9274_HW20 */
 		.hal_desc_sz = sizeof(struct hal_rx_desc_qcn9274_compact),
+		.tcl_to_wbm_rbm_map = ath12k_hal_tcl_to_wbm_rbm_map_qcn9274,
 	},
 	{
 		/* ATH12K_HW_WCN7850_HW20 */
 		.hal_desc_sz = sizeof(struct hal_rx_desc_wcn7850),
+		.tcl_to_wbm_rbm_map = ath12k_hal_tcl_to_wbm_rbm_map_wcn7850,
 	},
 	{
 		/* ATH12K_HW_IPQ5332_HW10 */
 		.hal_desc_sz = sizeof(struct hal_rx_desc_qcn9274_compact),
+		.tcl_to_wbm_rbm_map = ath12k_hal_tcl_to_wbm_rbm_map_qcn9274,
 	},
 };
 
@@ -35,6 +41,7 @@ int ath12k_wifi7_hal_init(struct ath12k_base *ab)
 
 	hal->hal_ops = ab->hw_params->hal_ops;
 	hal->hal_desc_sz = ath12k_wifi7_hw_ver_map[ab->hw_rev].hal_desc_sz;
+	hal->tcl_to_wbm_rbm_map = ath12k_wifi7_hw_ver_map[ab->hw_rev].tcl_to_wbm_rbm_map;
 
 	return 0;
 }

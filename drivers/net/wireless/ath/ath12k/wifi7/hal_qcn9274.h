@@ -12,7 +12,7 @@
 
 extern const struct hal_ops hal_qcn9274_ops;
 extern const struct ath12k_hal_tcl_to_wbm_rbm_map
-ath12k_hal_qcn9274_tcl_to_wbm_rbm_map[DP_TCL_NUM_RING_MAX];
+ath12k_hal_tcl_to_wbm_rbm_map_qcn9274[DP_TCL_NUM_RING_MAX];
 
 u32 ath12k_hal_rx_h_mpdu_err_qcn9274(struct hal_rx_desc *desc);
 void ath12k_hal_rx_desc_get_crypto_header_qcn9274(struct hal_rx_desc *desc,
