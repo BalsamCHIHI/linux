@@ -8,6 +8,7 @@
 #include "../dp_rx.h"
 #include "../dp_tx.h"
 #include "../dp_mon.h"
+#include "../dp_cmn.h"
 #include "dp_rx.h"
 #include "dp.h"
 #include "dp_tx.h"
@@ -113,3 +114,26 @@ int ath12k_wifi7_dp_service_srng(struct ath12k_base *ab,
 done:
 	return tot_work_done;
 }
+
+/* TODO: remove export once this file is built with wifi7 ko */
+struct ath12k_dp *ath12k_wifi7_dp_init(struct ath12k_base *ab)
+{
+	struct ath12k_dp *dp;
+
+	dp = kzalloc(sizeof(*dp), GFP_KERNEL);
+	if (!dp)
+		return NULL;
+
+	dp->ab = ab;
+	dp->dev = ab->dev;
+	dp->hw_params = ab->hw_params;
+
+	return dp;
+}
+EXPORT_SYMBOL(ath12k_wifi7_dp_init);
+
+void ath12k_wifi7_dp_deinit(struct ath12k_dp *dp)
+{
+	kfree(dp);
+}
+EXPORT_SYMBOL(ath12k_wifi7_dp_deinit);

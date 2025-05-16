@@ -45,6 +45,8 @@ struct ath12k_base;
 
 struct ath12k_ahb_device_family_ops {
 	int (*probe)(struct platform_device *pdev);
+	struct ath12k_dp *(*dp_init)(struct ath12k_base *ab);
+	void (*dp_deinit)(struct ath12k_dp *dp);
 };
 
 struct ath12k_ahb {

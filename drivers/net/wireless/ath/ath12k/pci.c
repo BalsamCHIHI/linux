@@ -1615,12 +1615,27 @@ static int ath12k_pci_probe(struct pci_dev *pdev,
 		goto err_free_irq;
 	}
 
+	/* as dp need hal srngs, dp_init op must be called after
+	 * hal srng initialization
+	 */
+	if (ab_pci->device_ops->dp_init) {
+		ab->dp = ab_pci->device_ops->dp_init(ab);
+		if (!ab->dp) {
+			ath12k_err(ab, "dp_init failed");
+			goto err_pci_msi_free;
+		}
+	}
+
 	ret = ath12k_core_init(ab);
 	if (ret) {
 		ath12k_err(ab, "failed to init core: %d\n", ret);
-		goto err_free_irq;
+		goto err_free_dp;
 	}
 	return 0;
+
+err_free_dp:
+	if (ab_pci->device_ops->dp_deinit)
+		ab_pci->device_ops->dp_deinit(ab->dp);
 
 err_free_irq:
 	/* __free_irq() expects the caller to have cleared the affinity hint */
@@ -1681,6 +1696,10 @@ qmi_fail:
 
 	ath12k_hal_srng_deinit(ab);
 	ath12k_ce_free_pipes(ab);
+
+	if (ab_pci->device_ops->dp_deinit)
+		ab_pci->device_ops->dp_deinit(ab->dp);
+
 	ath12k_core_free(ab);
 }
 
