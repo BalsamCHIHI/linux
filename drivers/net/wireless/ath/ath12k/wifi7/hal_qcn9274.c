@@ -748,5 +748,9 @@ const struct hal_ops hal_qcn9274_ops = {
 	.rx_desc_copy_end_tlv = ath12k_hal_rx_desc_end_tlv_copy_qcn9274,
 	.rx_desc_get_msdu_src_link_id = ath12k_hal_rx_get_msdu_src_link_qcn9274,
 	.extract_rx_desc_data = ath12k_hal_extract_rx_desc_data_qcn9274,
+	.ce_dst_setup = ath12k_wifi7_hal_ce_dst_setup,
+	.srng_src_hw_init = ath12k_wifi7_hal_srng_src_hw_init,
+	.srng_dst_hw_init = ath12k_wifi7_hal_srng_dst_hw_init,
+	.set_umac_srng_ptr_addr = ath12k_wifi7_hal_set_umac_srng_ptr_addr,
 };
 EXPORT_SYMBOL(hal_qcn9274_ops);
