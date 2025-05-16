@@ -40,7 +40,7 @@ static int ath12k_ce_rx_buf_enqueue_pipe(struct ath12k_ce_pipe *pipe,
 		goto exit;
 	}
 
-	ath12k_hal_ce_dst_set_desc(desc, paddr);
+	ath12k_hal_ce_dst_set_desc(&ab->hal, desc, paddr);
 
 	ring->skb[write_index] = skb;
 	write_index = CE_RING_IDX_INCR(nentries_mask, write_index);
@@ -368,6 +368,7 @@ ath12k_ce_alloc_ring(struct ath12k_base *ab, int nentries, int desc_sz)
 
 static int ath12k_ce_alloc_pipe(struct ath12k_base *ab, int ce_id)
 {
+	struct ath12k_hal *hal = &ab->hal;
 	struct ath12k_ce_pipe *pipe = &ab->ce.ce_pipe[ce_id];
 	const struct ce_attr *attr = &ab->hw_params->host_ce_config[ce_id];
 	struct ath12k_ce_ring *ring;
@@ -379,7 +380,7 @@ static int ath12k_ce_alloc_pipe(struct ath12k_base *ab, int ce_id)
 	if (attr->src_nentries) {
 		pipe->send_cb = ath12k_ce_send_done_cb;
 		nentries = roundup_pow_of_two(attr->src_nentries);
-		desc_sz = ath12k_hal_ce_get_desc_size(HAL_CE_DESC_SRC);
+		desc_sz = ath12k_hal_ce_get_desc_size(hal, HAL_CE_DESC_SRC);
 		ring = ath12k_ce_alloc_ring(ab, nentries, desc_sz);
 		if (IS_ERR(ring))
 			return PTR_ERR(ring);
@@ -389,13 +390,13 @@ static int ath12k_ce_alloc_pipe(struct ath12k_base *ab, int ce_id)
 	if (attr->dest_nentries) {
 		pipe->recv_cb = attr->recv_cb;
 		nentries = roundup_pow_of_two(attr->dest_nentries);
-		desc_sz = ath12k_hal_ce_get_desc_size(HAL_CE_DESC_DST);
+		desc_sz = ath12k_hal_ce_get_desc_size(hal, HAL_CE_DESC_DST);
 		ring = ath12k_ce_alloc_ring(ab, nentries, desc_sz);
 		if (IS_ERR(ring))
 			return PTR_ERR(ring);
 		pipe->dest_ring = ring;
 
-		desc_sz = ath12k_hal_ce_get_desc_size(HAL_CE_DESC_DST_STATUS);
+		desc_sz = ath12k_hal_ce_get_desc_size(hal, HAL_CE_DESC_DST_STATUS);
 		ring = ath12k_ce_alloc_ring(ab, nentries, desc_sz);
 		if (IS_ERR(ring))
 			return PTR_ERR(ring);
@@ -488,7 +489,7 @@ int ath12k_ce_send(struct ath12k_base *ab, struct sk_buff *skb, u8 pipe_id,
 	if (pipe->attr_flags & CE_ATTR_BYTE_SWAP_DATA)
 		byte_swap_data = 1;
 
-	ath12k_hal_ce_src_set_desc(desc, ATH12K_SKB_CB(skb)->paddr,
+	ath12k_hal_ce_src_set_desc(&ab->hal, desc, ATH12K_SKB_CB(skb)->paddr,
 				   skb->len, transfer_id, byte_swap_data);
 
 	pipe->src_ring->skb[write_index] = skb;
@@ -674,6 +675,7 @@ int ath12k_ce_init_pipes(struct ath12k_base *ab)
 
 void ath12k_ce_free_pipes(struct ath12k_base *ab)
 {
+	struct ath12k_hal *hal = &ab->hal;
 	struct ath12k_ce_pipe *pipe;
 	int desc_sz;
 	int i;
@@ -682,7 +684,8 @@ void ath12k_ce_free_pipes(struct ath12k_base *ab)
 		pipe = &ab->ce.ce_pipe[i];
 
 		if (pipe->src_ring) {
-			desc_sz = ath12k_hal_ce_get_desc_size(HAL_CE_DESC_SRC);
+			desc_sz = ath12k_hal_ce_get_desc_size(hal,
+							      HAL_CE_DESC_SRC);
 			dma_free_coherent(ab->dev,
 					  pipe->src_ring->nentries * desc_sz +
 					  CE_DESC_RING_ALIGN,
@@ -693,7 +696,8 @@ void ath12k_ce_free_pipes(struct ath12k_base *ab)
 		}
 
 		if (pipe->dest_ring) {
-			desc_sz = ath12k_hal_ce_get_desc_size(HAL_CE_DESC_DST);
+			desc_sz = ath12k_hal_ce_get_desc_size(hal,
+							      HAL_CE_DESC_DST);
 			dma_free_coherent(ab->dev,
 					  pipe->dest_ring->nentries * desc_sz +
 					  CE_DESC_RING_ALIGN,
@@ -705,7 +709,8 @@ void ath12k_ce_free_pipes(struct ath12k_base *ab)
 
 		if (pipe->status_ring) {
 			desc_sz =
-			  ath12k_hal_ce_get_desc_size(HAL_CE_DESC_DST_STATUS);
+			  ath12k_hal_ce_get_desc_size(hal,
+						      HAL_CE_DESC_DST_STATUS);
 			dma_free_coherent(ab->dev,
 					  pipe->status_ring->nentries * desc_sz +
 					  CE_DESC_RING_ALIGN,
