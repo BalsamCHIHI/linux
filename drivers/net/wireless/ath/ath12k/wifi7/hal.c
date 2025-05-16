@@ -33,6 +33,7 @@ int ath12k_wifi7_hal_init(struct ath12k_base *ab)
 
 	memset(hal, 0, sizeof(*hal));
 
+	hal->hal_ops = ab->hw_params->hal_ops;
 	hal->hal_desc_sz = ath12k_wifi7_hw_ver_map[ab->hw_rev].hal_desc_sz;
 
 	return 0;

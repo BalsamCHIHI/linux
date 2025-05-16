@@ -1456,6 +1456,7 @@ struct ath12k_hal {
 		dma_addr_t paddr;
 	} wrp;
 
+	const struct hal_ops *hal_ops;
 	/* Available REO blocking resources bitmap */
 	u8 avail_blk_resource;
 
@@ -1592,9 +1593,6 @@ struct hal_ops {
 				     struct hal_rx_desc *rx_desc,
 				     struct hal_rx_desc *ldesc);
 };
-
-extern const struct hal_ops hal_qcn9274_ops;
-extern const struct hal_ops hal_wcn7850_ops;
 
 u32 ath12k_wifi7_hal_reo_qdesc_size(u32 ba_window_size, u8 tid);
 void ath12k_wifi7_hal_reo_qdesc_setup(struct hal_rx_reo_queue *qdesc,
