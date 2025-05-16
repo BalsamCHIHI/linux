@@ -313,12 +313,14 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 		       struct ath12k_wmi_peer_create_arg *arg)
 {
 	struct ieee80211_vif *vif = ath12k_ahvif_to_vif(arvif->ahvif);
+	struct ath12k_vif *ahvif = arvif->ahvif;
 	struct ath12k_link_sta *arsta;
 	u8 link_id = arvif->link_id;
 	struct ath12k_peer *peer;
 	struct ath12k_sta *ahsta;
 	u16 ml_peer_id;
 	int ret;
+	struct ath12k_dp_link_vif *dp_link_vif = &ahvif->dp_vif.dp_link_vif[link_id];
 
 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
 
@@ -379,8 +381,8 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 	peer->sta = sta;
 
 	if (vif->type == NL80211_IFTYPE_STATION) {
-		arvif->ast_hash = peer->ast_hash;
-		arvif->ast_idx = peer->hw_peer_id;
+		dp_link_vif->ast_hash = peer->ast_hash;
+		dp_link_vif->ast_idx = peer->hw_peer_id;
 	}
 
 	if (vif->type == NL80211_IFTYPE_AP)

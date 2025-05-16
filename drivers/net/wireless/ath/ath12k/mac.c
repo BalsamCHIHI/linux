@@ -4760,7 +4760,7 @@ install:
 		return -ETIMEDOUT;
 
 	if (ether_addr_equal(macaddr, arvif->bssid))
-		ahvif->key_cipher = key->cipher;
+		ahvif->dp_vif.key_cipher = key->cipher;
 
 	return ar->install_key_status ? -EINVAL : 0;
 }
@@ -7541,7 +7541,7 @@ void ath12k_mac_op_tx(struct ieee80211_hw *hw,
 			return;
 		}
 	} else {
-		mcbc_gsn = atomic_inc_return(&ahvif->mcbc_gsn) & 0xfff;
+		mcbc_gsn = atomic_inc_return(&ahvif->dp_vif.mcbc_gsn) & 0xfff;
 
 		links_map = ahvif->links_map;
 		for_each_set_bit(link_id, &links_map,
@@ -7565,9 +7565,10 @@ void ath12k_mac_op_tx(struct ieee80211_hw *hw,
 
 			skb_cb = ATH12K_SKB_CB(msdu_copied);
 			skb_cb->link_id = link_id;
+			skb_cb->vif = vif;
 
 			/* For open mode, skip peer find logic */
-			if (unlikely(!ahvif->key_cipher))
+			if (unlikely(!ahvif->dp_vif.key_cipher))
 				goto skip_peer_find;
 
 			spin_lock_bh(&tmp_ar->ab->base_lock);
@@ -8154,14 +8155,14 @@ static void ath12k_mac_update_vif_offload(struct ath12k_link_vif *arvif)
 					IEEE80211_OFFLOAD_DECAP_ENABLED);
 
 	if (vif->offload_flags & IEEE80211_OFFLOAD_ENCAP_ENABLED)
-		ahvif->tx_encap_type = ATH12K_HW_TXRX_ETHERNET;
+		ahvif->dp_vif.tx_encap_type = ATH12K_HW_TXRX_ETHERNET;
 	else if (test_bit(ATH12K_FLAG_RAW_MODE, &ab->dev_flags))
-		ahvif->tx_encap_type = ATH12K_HW_TXRX_RAW;
+		ahvif->dp_vif.tx_encap_type = ATH12K_HW_TXRX_RAW;
 	else
-		ahvif->tx_encap_type = ATH12K_HW_TXRX_NATIVE_WIFI;
+		ahvif->dp_vif.tx_encap_type = ATH12K_HW_TXRX_NATIVE_WIFI;
 
 	ret = ath12k_wmi_vdev_set_param_cmd(ar, arvif->vdev_id,
-					    param_id, ahvif->tx_encap_type);
+					    param_id, ahvif->dp_vif.tx_encap_type);
 	if (ret) {
 		ath12k_warn(ab, "failed to set vdev %d tx encap mode: %d\n",
 			    arvif->vdev_id, ret);
@@ -8339,6 +8340,7 @@ int ath12k_mac_vdev_create(struct ath12k *ar, struct ath12k_link_vif *arvif)
 	int i;
 	int ret, vdev_id;
 	u8 link_id;
+	struct ath12k_dp_link_vif *dp_link_vif = NULL;
 
 	lockdep_assert_wiphy(hw->wiphy);
 
@@ -8369,6 +8371,12 @@ int ath12k_mac_vdev_create(struct ath12k *ar, struct ath12k_link_vif *arvif)
 	vdev_id = __ffs64(ab->free_vdev_map);
 	arvif->vdev_id = vdev_id;
 	ahvif->vdev_subtype = WMI_VDEV_SUBTYPE_NONE;
+
+	dp_link_vif = &ahvif->dp_vif.dp_link_vif[arvif->link_id];
+
+	dp_link_vif->vdev_id = arvif->vdev_id;
+	dp_link_vif->lmac_id = ar->lmac_id;
+	dp_link_vif->pdev_idx = ar->pdev_idx;
 
 	switch (vif->type) {
 	case NL80211_IFTYPE_UNSPECIFIED:
@@ -8811,6 +8819,7 @@ static int ath12k_mac_vdev_delete(struct ath12k *ar, struct ath12k_link_vif *arv
 {
 	struct ath12k_vif *ahvif = arvif->ahvif;
 	struct ieee80211_vif *vif = ath12k_ahvif_to_vif(ahvif);
+	struct ath12k_dp_link_vif *dp_link_vif;
 	struct ath12k_base *ab = ar->ab;
 	unsigned long time_left;
 	int ret;
@@ -8857,7 +8866,9 @@ err_vdev_del:
 		     ath12k_mac_vif_txmgmt_idr_remove, vif);
 
 	ath12k_mac_vif_unref(ath12k_ab_to_dp(ab), vif);
-	ath12k_dp_tx_put_bank_profile(ath12k_ab_to_dp(ab), arvif->bank_id);
+
+	dp_link_vif = &ahvif->dp_vif.dp_link_vif[arvif->link_id];
+	ath12k_dp_tx_put_bank_profile(ath12k_ab_to_dp(ab), dp_link_vif->bank_id);
 
 	/* Recalc txpower for remaining vdev */
 	ath12k_mac_txpower_recalc(ar);
@@ -10472,7 +10483,7 @@ ath12k_mac_op_reconfig_complete(struct ieee80211_hw *hw,
 			ahvif = arvif->ahvif;
 			ath12k_dbg(ab, ATH12K_DBG_BOOT,
 				   "reconfig cipher %d up %d vdev type %d\n",
-				   ahvif->key_cipher,
+				   ahvif->dp_vif.key_cipher,
 				   arvif->is_up,
 				   ahvif->vdev_type);
 

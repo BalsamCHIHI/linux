@@ -282,16 +282,8 @@ struct ath12k_link_vif {
 	u32 vdev_id;
 	u32 beacon_interval;
 	u32 dtim_period;
-	u16 ast_hash;
-	u16 ast_idx;
-	u16 tcl_metadata;
-	u8 hal_addr_search_flags;
-	u8 search_type;
 
 	struct ath12k *ar;
-
-	int bank_id;
-	u8 vdev_id_check_en;
 
 	struct wmi_wmm_params_all_arg wmm_params;
 	struct list_head list;
@@ -321,7 +313,30 @@ struct ath12k_link_vif {
 	bool is_sta_assoc_link;
 };
 
+struct ath12k_dp_link_vif {
+	u32 vdev_id;
+	u8 search_type;
+	u8 hal_addr_search_flags;
+	u8 pdev_idx;
+	u16 ast_idx;
+	u16 ast_hash;
+	u16 tcl_metadata;
+	u8 vdev_id_check_en;
+	u8 lmac_id;
+	int bank_id;
+};
+
+struct ath12k_dp_vif {
+	u8 tx_encap_type;
+	u32 key_cipher;
+	atomic_t mcbc_gsn;
+	struct ath12k_dp_link_vif dp_link_vif[ATH12K_NUM_MAX_LINKS];
+};
+
 struct ath12k_vif {
+	/* Should be the first member in the structure */
+	struct ath12k_dp_vif dp_vif;
+
 	enum wmi_vdev_type vdev_type;
 	enum wmi_vdev_subtype vdev_subtype;
 	struct ieee80211_vif *vif;
@@ -345,10 +360,7 @@ struct ath12k_vif {
 	} u;
 
 	u32 aid;
-	u32 key_cipher;
-	u8 tx_encap_type;
 	bool ps;
-	atomic_t mcbc_gsn;
 
 	struct ath12k_link_vif deflink;
 	struct ath12k_link_vif __rcu *link[ATH12K_NUM_MAX_LINKS];
