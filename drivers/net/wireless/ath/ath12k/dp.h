@@ -8,7 +8,7 @@
 #define ATH12K_DP_H
 
 #include "hal_desc.h"
-#include "hal_rx.h"
+#include "wifi7/hal_rx.h"
 #include "hw.h"
 
 #define MAX_RXDMA_PER_PDEV     2
