@@ -138,6 +138,12 @@ struct ath12k_pdev_dp {
 	u32 mac_id;
 	atomic_t num_tx_pending;
 	wait_queue_head_t tx_empty_waitq;
+
+	struct ath12k_dp *dp;
+	struct ieee80211_hw *hw;
+	u8 hw_link_id;
+	struct ath12k *ar;
+
 	struct dp_srng rxdma_mon_dst_ring[MAX_RXDMA_PER_PDEV];
 	struct dp_srng tx_mon_dst_ring[MAX_RXDMA_PER_PDEV];
 
@@ -405,6 +411,13 @@ struct ath12k_dp {
 	const struct ath12k_hw_params *hw_params;
 	struct device *dev;
 
+	/* Protects data fields like dp_pdevs.
+	 * It will also be used to protect other data path objects.
+	 */
+	spinlock_t dp_lock;
+	struct ath12k_pdev_dp __rcu *dp_pdevs[MAX_RADIOS];
+	u8 num_radios;
+
 	struct ath12k_hw_group *ag;
 	u8 device_id;
 
@@ -421,6 +434,21 @@ static inline struct ath12k_dp *
 ath12k_dp_hw_grp_to_dp(struct ath12k_dp_hw_group *hw_grp, u8 device_id)
 {
 	return hw_grp->dp[device_id];
+}
+
+static inline struct ieee80211_hw *
+ath12k_dp_pdev_to_hw(struct ath12k_pdev_dp *pdev)
+{
+	return pdev->hw;
+}
+
+static inline struct ath12k_pdev_dp *
+ath12k_dp_to_dp_pdev(struct ath12k_dp *dp, u8 pdev_id)
+{
+	RCU_LOCKDEP_WARN(!rcu_read_lock_held(),
+			 "ath12k dp to dp pdev called without rcu lock");
+
+	return rcu_dereference(dp->dp_pdevs[pdev_id]);
 }
 
 void ath12k_dp_vdev_tx_attach(struct ath12k *ar, struct ath12k_link_vif *arvif);

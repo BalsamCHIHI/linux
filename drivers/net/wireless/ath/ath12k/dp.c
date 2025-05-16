@@ -876,7 +876,18 @@ fail_desc_bank_free:
 
 void ath12k_dp_pdev_free(struct ath12k_base *ab)
 {
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
+	struct ath12k *ar;
 	int i;
+
+	spin_lock_bh(&dp->dp_lock);
+	for (i = 0; i < ab->num_radios; i++) {
+		ar = ab->pdevs[i].ar;
+		rcu_assign_pointer(dp->dp_pdevs[ar->pdev_idx], NULL);
+	}
+	spin_unlock_bh(&dp->dp_lock);
+
+	synchronize_rcu();
 
 	if (!ab->mon_reap_timer.function)
 		return;
@@ -925,6 +936,8 @@ static void ath12k_dp_mon_reap_timer_init(struct ath12k_base *ab)
 
 int ath12k_dp_pdev_alloc(struct ath12k_base *ab)
 {
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
+	struct ath12k_pdev_dp *dp_pdev;
 	struct ath12k *ar;
 	int ret;
 	int i;
@@ -938,6 +951,19 @@ int ath12k_dp_pdev_alloc(struct ath12k_base *ab)
 	/* TODO: Per-pdev rx ring unlike tx ring which is mapped to different AC's */
 	for (i = 0; i < ab->num_radios; i++) {
 		ar = ab->pdevs[i].ar;
+
+		dp_pdev = &ar->dp;
+
+		dp_pdev->hw = ar->ah->hw;
+		dp_pdev->dp = dp;
+		/* Below linking is a temporary linking to handle few cases like cac
+		 * timeout, active pdev etc in dp rx. Some flags/fields can be added
+		 * in dp_pdev to remove ar dependencies in the performance critical path.
+		 *
+		 * TODO: remove this once those dependencies are resolved.
+		 */
+		dp_pdev->ar = ar;
+
 		ret = ath12k_dp_rx_pdev_alloc(ab, i);
 		if (ret) {
 			ath12k_warn(ab, "failed to allocate pdev rx for pdev_id :%d\n",
@@ -950,6 +976,15 @@ int ath12k_dp_pdev_alloc(struct ath12k_base *ab)
 			goto err;
 		}
 	}
+
+	spin_lock_bh(&dp->dp_lock);
+	for (i = 0; i < ab->num_radios; i++) {
+		ar = ab->pdevs[i].ar;
+		rcu_assign_pointer(dp->dp_pdevs[ar->pdev_idx], &ar->dp);
+	}
+	spin_unlock_bh(&dp->dp_lock);
+
+	dp->num_radios = ab->num_radios;
 
 	return 0;
 err:
@@ -1575,6 +1610,7 @@ static int ath12k_dp_setup(struct ath12k_base *ab)
 	dp = ath12k_ab_to_dp(ab);
 	dp->ab = ab;
 
+	spin_lock_init(&dp->dp_lock);
 	INIT_LIST_HEAD(&dp->reo_cmd_list);
 	INIT_LIST_HEAD(&dp->reo_cmd_cache_flush_list);
 	spin_lock_init(&dp->reo_cmd_lock);
