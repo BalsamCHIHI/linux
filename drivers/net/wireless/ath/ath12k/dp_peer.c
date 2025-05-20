@@ -9,14 +9,14 @@
 #include "debug.h"
 
 struct ath12k_dp_link_peer *
-ath12k_dp_link_peer_find_by_vdev_id_and_addr(struct ath12k_base *ab,
+ath12k_dp_link_peer_find_by_vdev_id_and_addr(struct ath12k_dp *dp,
 					     int vdev_id, const u8 *addr)
 {
 	struct ath12k_dp_link_peer *peer;
 
-	lockdep_assert_held(&ab->base_lock);
+	lockdep_assert_held(&dp->dp_lock);
 
-	list_for_each_entry(peer, &ab->peers, list) {
+	list_for_each_entry(peer, &dp->peers, list) {
 		if (peer->vdev_id != vdev_id)
 			continue;
 		if (!ether_addr_equal(peer->addr, addr))
@@ -29,14 +29,14 @@ ath12k_dp_link_peer_find_by_vdev_id_and_addr(struct ath12k_base *ab,
 }
 
 struct ath12k_dp_link_peer *
-ath12k_dp_link_peer_find_by_pdev_id_and_addr(struct ath12k_base *ab, u8 pdev_idx,
+ath12k_dp_link_peer_find_by_pdev_id_and_addr(struct ath12k_dp *dp, u8 pdev_idx,
 					     const u8 *addr)
 {
 	struct ath12k_dp_link_peer *peer;
 
-	lockdep_assert_held(&ab->base_lock);
+	lockdep_assert_held(&dp->dp_lock);
 
-	list_for_each_entry(peer, &ab->peers, list) {
+	list_for_each_entry(peer, &dp->peers, list) {
 		if (peer->pdev_idx != pdev_idx)
 			continue;
 		if (!ether_addr_equal(peer->addr, addr))
@@ -49,13 +49,13 @@ ath12k_dp_link_peer_find_by_pdev_id_and_addr(struct ath12k_base *ab, u8 pdev_idx
 }
 
 struct ath12k_dp_link_peer *
-ath12k_dp_link_peer_find_by_addr(struct ath12k_base *ab, const u8 *addr)
+ath12k_dp_link_peer_find_by_addr(struct ath12k_dp *dp, const u8 *addr)
 {
 	struct ath12k_dp_link_peer *peer;
 
-	lockdep_assert_held(&ab->base_lock);
+	lockdep_assert_held(&dp->dp_lock);
 
-	list_for_each_entry(peer, &ab->peers, list) {
+	list_for_each_entry(peer, &dp->peers, list) {
 		if (!ether_addr_equal(peer->addr, addr))
 			continue;
 
@@ -66,13 +66,13 @@ ath12k_dp_link_peer_find_by_addr(struct ath12k_base *ab, const u8 *addr)
 }
 
 static struct ath12k_dp_link_peer *
-ath12k_dp_link_peer_find_by_ml_id(struct ath12k_base *ab, int ml_peer_id)
+ath12k_dp_link_peer_find_by_ml_id(struct ath12k_dp *dp, int ml_peer_id)
 {
 	struct ath12k_dp_link_peer *peer;
 
-	lockdep_assert_held(&ab->base_lock);
+	lockdep_assert_held(&dp->dp_lock);
 
-	list_for_each_entry(peer, &ab->peers, list)
+	list_for_each_entry(peer, &dp->peers, list)
 		if (ml_peer_id == peer->ml_id)
 			return peer;
 
@@ -80,46 +80,46 @@ ath12k_dp_link_peer_find_by_ml_id(struct ath12k_base *ab, int ml_peer_id)
 }
 
 struct ath12k_dp_link_peer *
-ath12k_dp_link_peer_find_by_id(struct ath12k_base *ab, int peer_id)
+ath12k_dp_link_peer_find_by_id(struct ath12k_dp *dp, int peer_id)
 {
 	struct ath12k_dp_link_peer *peer;
 
-	lockdep_assert_held(&ab->base_lock);
+	lockdep_assert_held(&dp->dp_lock);
 
 	if (peer_id & ATH12K_PEER_ML_ID_VALID)
-		return ath12k_dp_link_peer_find_by_ml_id(ab, peer_id);
+		return ath12k_dp_link_peer_find_by_ml_id(dp, peer_id);
 
-	list_for_each_entry(peer, &ab->peers, list)
+	list_for_each_entry(peer, &dp->peers, list)
 		if (peer_id == peer->peer_id)
 			return peer;
 
 	return NULL;
 }
 
-bool ath12k_dp_link_peer_exist_by_vdev_id(struct ath12k_base *ab, int vdev_id)
+bool ath12k_dp_link_peer_exist_by_vdev_id(struct ath12k_dp *dp, int vdev_id)
 {
 	struct ath12k_dp_link_peer *peer;
 
-	spin_lock_bh(&ab->base_lock);
+	spin_lock_bh(&dp->dp_lock);
 
-	list_for_each_entry(peer, &ab->peers, list) {
+	list_for_each_entry(peer, &dp->peers, list) {
 		if (vdev_id == peer->vdev_id) {
-			spin_unlock_bh(&ab->base_lock);
+			spin_unlock_bh(&dp->dp_lock);
 			return true;
 		}
 	}
-	spin_unlock_bh(&ab->base_lock);
+	spin_unlock_bh(&dp->dp_lock);
 	return false;
 }
 
 struct ath12k_dp_link_peer *
-ath12k_dp_link_peer_find_by_ast(struct ath12k_base *ab, int ast_hash)
+ath12k_dp_link_peer_find_by_ast(struct ath12k_dp *dp, int ast_hash)
 {
 	struct ath12k_dp_link_peer *peer;
 
-	lockdep_assert_held(&ab->base_lock);
+	lockdep_assert_held(&dp->dp_lock);
 
-	list_for_each_entry(peer, &ab->peers, list)
+	list_for_each_entry(peer, &dp->peers, list)
 		if (ast_hash == peer->ast_hash)
 			return peer;
 
@@ -129,10 +129,11 @@ ath12k_dp_link_peer_find_by_ast(struct ath12k_base *ab, int ast_hash)
 void ath12k_peer_unmap_event(struct ath12k_base *ab, u16 peer_id)
 {
 	struct ath12k_dp_link_peer *peer;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 
-	spin_lock_bh(&ab->base_lock);
+	spin_lock_bh(&dp->dp_lock);
 
-	peer = ath12k_dp_link_peer_find_by_id(ab, peer_id);
+	peer = ath12k_dp_link_peer_find_by_id(dp, peer_id);
 	if (!peer) {
 		ath12k_warn(ab, "peer-unmap-event: unknown peer id %d\n",
 			    peer_id);
@@ -147,16 +148,17 @@ void ath12k_peer_unmap_event(struct ath12k_base *ab, u16 peer_id)
 	wake_up(&ab->peer_mapping_wq);
 
 exit:
-	spin_unlock_bh(&ab->base_lock);
+	spin_unlock_bh(&dp->dp_lock);
 }
 
 void ath12k_peer_map_event(struct ath12k_base *ab, u8 vdev_id, u16 peer_id,
 			   u8 *mac_addr, u16 ast_hash, u16 hw_peer_id)
 {
 	struct ath12k_dp_link_peer *peer;
+	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 
-	spin_lock_bh(&ab->base_lock);
-	peer = ath12k_dp_link_peer_find_by_vdev_id_and_addr(ab, vdev_id, mac_addr);
+	spin_lock_bh(&dp->dp_lock);
+	peer = ath12k_dp_link_peer_find_by_vdev_id_and_addr(dp, vdev_id, mac_addr);
 	if (!peer) {
 		peer = kzalloc(sizeof(*peer), GFP_ATOMIC);
 		if (!peer)
@@ -167,7 +169,7 @@ void ath12k_peer_map_event(struct ath12k_base *ab, u8 vdev_id, u16 peer_id,
 		peer->ast_hash = ast_hash;
 		peer->hw_peer_id = hw_peer_id;
 		ether_addr_copy(peer->addr, mac_addr);
-		list_add(&peer->list, &ab->peers);
+		list_add(&peer->list, &dp->peers);
 		wake_up(&ab->peer_mapping_wq);
 	}
 
@@ -175,5 +177,5 @@ void ath12k_peer_map_event(struct ath12k_base *ab, u8 vdev_id, u16 peer_id,
 		   vdev_id, mac_addr, peer_id);
 
 exit:
-	spin_unlock_bh(&ab->base_lock);
+	spin_unlock_bh(&dp->dp_lock);
 }

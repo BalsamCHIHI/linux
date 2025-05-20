@@ -422,7 +422,7 @@ struct ath12k_dp {
 	struct device *dev;
 	struct ath12k_hal *hal;
 
-	/* Protects data fields like dp_pdevs.
+	/* Protects data fields like dp_pdevs and peers.
 	 * It will also be used to protect other data path objects.
 	 */
 	spinlock_t dp_lock;
@@ -433,6 +433,9 @@ struct ath12k_dp {
 	u8 device_id;
 
 	struct ath12k_dp_arch_ops *ops;
+
+	/* Linked list of struct ath12k_dp_link_peer */
+	struct list_head peers;
 };
 
 static inline void ath12k_dp_get_mac_addr(u32 addr_l32, u16 addr_h16, u8 *addr)

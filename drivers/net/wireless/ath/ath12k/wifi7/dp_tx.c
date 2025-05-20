@@ -490,12 +490,12 @@ static void ath12k_wifi7_dp_tx_update_txcompl(struct ath12k_pdev_dp *dp_pdev,
 	u8 rate_idx = 0;
 	int ret;
 
-	spin_lock_bh(&ab->base_lock);
-	peer = ath12k_dp_link_peer_find_by_id(ab, ts->peer_id);
+	spin_lock_bh(&dp->dp_lock);
+	peer = ath12k_dp_link_peer_find_by_id(dp, ts->peer_id);
 	if (!peer || !peer->sta) {
 		ath12k_dbg(ab, ATH12K_DBG_DP_TX,
 			   "failed to find the peer by id %u\n", ts->peer_id);
-		spin_unlock_bh(&ab->base_lock);
+		spin_unlock_bh(&dp->dp_lock);
 		return;
 	}
 	sta = peer->sta;
@@ -509,7 +509,7 @@ static void ath12k_wifi7_dp_tx_update_txcompl(struct ath12k_pdev_dp *dp_pdev,
 		txrate.nss = arsta->last_txrate.nss;
 	else
 		txrate.nss = arsta->peer_nss;
-	spin_unlock_bh(&ab->base_lock);
+	spin_unlock_bh(&dp->dp_lock);
 
 	switch (ts->pkt_type) {
 	case HAL_TX_RATE_STATS_PKT_TYPE_11A:
@@ -591,9 +591,9 @@ static void ath12k_wifi7_dp_tx_update_txcompl(struct ath12k_pdev_dp *dp_pdev,
 			ath12k_mac_eht_ru_tones_to_nl80211_eht_ru_alloc(ts->tones);
 	}
 
-	spin_lock_bh(&ab->base_lock);
+	spin_lock_bh(&dp->dp_lock);
 	arsta->txrate = txrate;
-	spin_unlock_bh(&ab->base_lock);
+	spin_unlock_bh(&dp->dp_lock);
 }
 
 static void ath12k_wifi7_dp_tx_complete_msdu(struct ath12k_pdev_dp *dp_pdev,
