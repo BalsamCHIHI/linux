@@ -63,6 +63,10 @@ struct ath12k_dp_link_peer {
 	/* for reference to ath12k_link_sta */
 	u8 link_id;
 	bool ucast_ra_only;
+
+	/* peer addr based rhashtable list pointer */
+	struct rhash_head rhash_addr;
+	bool rhash_done;
 };
 
 void ath12k_peer_unmap_event(struct ath12k_base *ab, u16 peer_id);
@@ -81,4 +85,10 @@ ath12k_dp_link_peer_find_by_ast(struct ath12k_dp *dp, int ast_hash);
 struct ath12k_dp_link_peer *
 ath12k_dp_link_peer_find_by_pdev_id_and_addr(struct ath12k_dp *dp, u8 pdev_idx,
 					     const u8 *addr);
+int ath12k_dp_link_peer_rhash_tbl_init(struct ath12k_dp *dp);
+void ath12k_dp_link_peer_rhash_tbl_destroy(struct ath12k_dp *dp);
+int ath12k_dp_link_peer_rhash_add(struct ath12k_dp *dp,
+				  struct ath12k_dp_link_peer *peer);
+int ath12k_dp_link_peer_rhash_delete(struct ath12k_dp *dp,
+				     struct ath12k_dp_link_peer *peer);
 #endif
