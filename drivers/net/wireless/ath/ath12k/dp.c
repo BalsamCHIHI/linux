@@ -916,6 +916,7 @@ int ath12k_dp_pdev_alloc(struct ath12k_base *ab)
 		 * TODO: remove this once those dependencies are resolved.
 		 */
 		dp_pdev->ar = ar;
+		dp_pdev->dp_hw = &ar->ah->dp_hw;
 
 		ret = ath12k_dp_rx_pdev_alloc(ab, i);
 		if (ret) {
