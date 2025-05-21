@@ -10,7 +10,6 @@
 #include "hif.h"
 #include "hal.h"
 #include "debug.h"
-#include "wifi7/dp_rx.h"
 #include "peer.h"
 #include "dp_mon.h"
 #include "dp_cmn.h"
@@ -100,7 +99,7 @@ peer_clean:
 	}
 
 	for (; tid >= 0; tid--)
-		ath12k_wifi7_dp_rx_peer_tid_delete(ar, peer, tid);
+		ath12k_dp_arch_rx_peer_tid_delete(ath12k_ab_to_dp(ab), ar, peer, tid);
 
 	spin_unlock_bh(&dp->dp_lock);
 
@@ -339,7 +338,7 @@ static int ath12k_dp_tx_get_bank_profile(struct ath12k_base *ab,
 	bool configure_register = false;
 
 	/* convert vdev params into hal_tx_bank_config */
-	bank_config = dp->ops->dp_tx_get_vdev_bank_config(ab, arvif);
+	bank_config = ath12k_dp_tx_get_vdev_bank_config(ath12k_ab_to_dp(ab), arvif);
 
 	spin_lock_bh(&dp->tx_bank_lock);
 	/* TODO: implement using idr kernel framework*/
@@ -1584,7 +1583,7 @@ fail_link_desc_cleanup:
 
 void ath12k_dp_cmn_device_deinit(struct ath12k_dp *dp)
 {
-	dp->ops->dp_device_deinit(dp);
+	ath12k_dp_arch_op_device_deinit(dp);
 
 	ath12k_dp_link_peer_rhash_tbl_destroy(dp);
 
@@ -1599,7 +1598,7 @@ int ath12k_dp_cmn_device_init(struct ath12k_dp *dp)
 	if (ret)
 		return ret;
 
-	ret = dp->ops->dp_device_init(dp);
+	ret = ath12k_dp_arch_op_device_init(dp);
 	if (ret)
 		return ret;
 
