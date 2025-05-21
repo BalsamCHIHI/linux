@@ -4793,12 +4793,12 @@ static int ath12k_clear_peer_keys(struct ath12k_link_vif *arvif,
 
 	spin_unlock_bh(&dp->dp_lock);
 
-	for (i = 0; i < ARRAY_SIZE(peer->keys); i++) {
-		if (!peer->keys[i])
+	for (i = 0; i < ARRAY_SIZE(peer->dp_peer->keys); i++) {
+		if (!peer->dp_peer->keys[i])
 			continue;
 
 		/* key flags are not required to delete the key */
-		ret = ath12k_install_key(arvif, peer->keys[i],
+		ret = ath12k_install_key(arvif, peer->dp_peer->keys[i],
 					 DISABLE_KEY, addr, flags);
 		if (ret < 0 && first_errno == 0)
 			first_errno = ret;
@@ -4808,7 +4808,7 @@ static int ath12k_clear_peer_keys(struct ath12k_link_vif *arvif,
 				    i, ret);
 
 		spin_lock_bh(&dp->dp_lock);
-		peer->keys[i] = NULL;
+		peer->dp_peer->keys[i] = NULL;
 		spin_unlock_bh(&dp->dp_lock);
 	}
 
@@ -4889,20 +4889,22 @@ static int ath12k_mac_set_key(struct ath12k *ar, enum set_key_cmd cmd,
 	peer = ath12k_dp_link_peer_find_by_vdev_id_and_addr(dp, arvif->vdev_id,
 							    peer_addr);
 	if (peer && cmd == SET_KEY) {
-		peer->keys[key->keyidx] = key;
+		peer->dp_peer->keys[key->keyidx] = key;
 		if (key->flags & IEEE80211_KEY_FLAG_PAIRWISE) {
-			peer->ucast_keyidx = key->keyidx;
-			peer->sec_type = ath12k_dp_tx_get_encrypt_type(key->cipher);
+			peer->dp_peer->ucast_keyidx = key->keyidx;
+			peer->dp_peer->sec_type =
+					ath12k_dp_tx_get_encrypt_type(key->cipher);
 		} else {
-			peer->mcast_keyidx = key->keyidx;
-			peer->sec_type_grp = ath12k_dp_tx_get_encrypt_type(key->cipher);
+			peer->dp_peer->mcast_keyidx = key->keyidx;
+			peer->dp_peer->sec_type_grp =
+					ath12k_dp_tx_get_encrypt_type(key->cipher);
 		}
 	} else if (peer && cmd == DISABLE_KEY) {
-		peer->keys[key->keyidx] = NULL;
+		peer->dp_peer->keys[key->keyidx] = NULL;
 		if (key->flags & IEEE80211_KEY_FLAG_PAIRWISE)
-			peer->ucast_keyidx = 0;
+			peer->dp_peer->ucast_keyidx = 0;
 		else
-			peer->mcast_keyidx = 0;
+			peer->dp_peer->mcast_keyidx = 0;
 	} else if (!peer)
 		/* impossible unless FW goes crazy */
 		ath12k_warn(ab, "peer %pM disappeared!\n", peer_addr);
@@ -7683,7 +7685,7 @@ void ath12k_mac_op_tx(struct ieee80211_hw *hw,
 				continue;
 			}
 
-			key = peer->keys[peer->mcast_keyidx];
+			key = peer->dp_peer->keys[peer->dp_peer->mcast_keyidx];
 			if (key) {
 				skb_cb->cipher = key->cipher;
 				skb_cb->flags |= ATH12K_SKB_CIPHER_SET;

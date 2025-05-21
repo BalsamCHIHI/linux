@@ -34,24 +34,11 @@ struct ath12k_dp_link_peer {
 	u8 pdev_idx;
 	u16 hw_peer_id;
 
-	/* protected by ab->data_lock */
-	struct ieee80211_key_conf *keys[WMI_MAX_KEY_INDEX + 1];
-	struct ath12k_dp_rx_tid rx_tid[IEEE80211_NUM_TIDS + 1];
-
-	/* Info used in MMIC verification of
-	 * RX fragments
-	 */
-	struct crypto_shash *tfm_mmic;
-	u8 mcast_keyidx;
-	u8 ucast_keyidx;
-	u16 sec_type;
-	u16 sec_type_grp;
 	struct ppdu_user_delayba ppdu_stats_delayba;
 	bool delayba_flag;
 	bool is_authorized;
 	bool mlo;
 	/* protected by ab->data_lock */
-	bool dp_setup_done;
 
 	u16 ml_id;
 
@@ -65,7 +52,6 @@ struct ath12k_dp_link_peer {
 
 	/* for reference to ath12k_link_sta */
 	u8 link_id;
-	bool ucast_ra_only;
 
 	/* peer addr based rhashtable list pointer */
 	struct rhash_head rhash_addr;
@@ -76,19 +62,30 @@ struct ath12k_dp_link_peer {
 
 struct ath12k_dp_peer {
 	struct list_head list;
-	struct ieee80211_sta *sta;
-	int peer_id;
-	u8 addr[ETH_ALEN];
-	bool is_mlo;
+
 	bool is_vdev_peer;
+	bool is_mlo;
+	bool dp_setup_done;
 
-	struct ath12k_dp_link_peer __rcu *link_peers[ATH12K_NUM_MAX_LINKS];
+	u8 ucast_keyidx;
+	u8 addr[ETH_ALEN];
 
-	u16 sec_type;
-	u16 sec_type_grp;
-
+	u8 mcast_keyidx;
 	bool ucast_ra_only;
+	int peer_id;
+	struct ieee80211_sta *sta;
+
 	u8 hw_links[ATH12K_GROUP_MAX_RADIO];
+
+	u16 sec_type_grp;
+	u16 sec_type;
+
+	/* Info used in MMIC verification of * RX fragments */
+	struct crypto_shash *tfm_mmic;
+	struct ieee80211_key_conf *keys[WMI_MAX_KEY_INDEX + 1];
+	struct ath12k_dp_link_peer __rcu *link_peers[ATH12K_NUM_MAX_LINKS];
+	struct ath12k_reoq_buf reoq_bufs[IEEE80211_NUM_TIDS + 1];
+	struct ath12k_dp_rx_tid rx_tid[IEEE80211_NUM_TIDS + 1];
 };
 
 void ath12k_peer_unmap_event(struct ath12k_base *ab, u16 peer_id);
@@ -116,4 +113,8 @@ int ath12k_dp_link_peer_rhash_delete(struct ath12k_dp *dp,
 int ath12k_dp_peer_create(struct ath12k_dp_hw *dp_hw, u8 *addr,
 			  struct ath12k_dp_peer_create_params *params);
 void ath12k_dp_peer_delete(struct ath12k_dp_hw *dp_hw, u8 *addr);
+struct ath12k_dp_peer *ath12k_dp_peer_find_by_peerid_index(struct ath12k_pdev_dp *dp_pdev,
+							   u16 peer_id);
+struct ath12k_dp_link_peer *
+ath12k_dp_link_peer_find_by_peerid_index(struct ath12k_pdev_dp *dp_pdev, u16 peer_id);
 #endif

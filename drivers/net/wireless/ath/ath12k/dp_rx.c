@@ -453,8 +453,11 @@ void ath12k_dp_rx_peer_tid_cleanup(struct ath12k *ar, struct ath12k_dp_link_peer
 
 	lockdep_assert_held(&dp->dp_lock);
 
+	if (!peer->primary_link)
+		return;
+
 	for (i = 0; i <= IEEE80211_NUM_TIDS; i++) {
-		rx_tid = &peer->rx_tid[i];
+		rx_tid = &peer->dp_peer->rx_tid[i];
 
 		ath12k_wifi7_dp_rx_peer_tid_delete(ar, peer, i);
 		ath12k_dp_rx_frags_cleanup(rx_tid, true);
@@ -472,7 +475,6 @@ int ath12k_dp_rx_peer_tid_setup(struct ath12k *ar, const u8 *peer_mac, int vdev_
 	struct ath12k_base *ab = ar->ab;
 	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct ath12k_dp_link_peer *peer;
-	struct ath12k_sta *ahsta;
 	struct ath12k_dp_rx_tid *rx_tid;
 	dma_addr_t paddr_aligned;
 	int ret;
@@ -506,7 +508,7 @@ int ath12k_dp_rx_peer_tid_setup(struct ath12k *ar, const u8 *peer_mac, int vdev_
 		return -EINVAL;
 	}
 
-	rx_tid = &peer->rx_tid[tid];
+	rx_tid = &peer->dp_peer->rx_tid[tid];
 	paddr_aligned = rx_tid->qbuf.paddr_aligned;
 	/* Update the tid queue if it is already setup */
 	if (rx_tid->active) {
@@ -537,8 +539,7 @@ int ath12k_dp_rx_peer_tid_setup(struct ath12k *ar, const u8 *peer_mac, int vdev_
 
 	rx_tid->ba_win_sz = ba_win_sz;
 
-	ahsta = ath12k_sta_to_ahsta(peer->sta);
-	ret = ath12k_wifi7_dp_rx_assign_reoq(ab, ahsta, rx_tid, ssn, pn_type);
+	ret = ath12k_wifi7_dp_rx_assign_reoq(ab, peer->dp_peer, rx_tid, ssn, pn_type);
 	if (ret) {
 		spin_unlock_bh(&dp->dp_lock);
 		ath12k_warn(ab, "failed to assign reoq buf for rx tid %u\n", tid);
@@ -626,14 +627,20 @@ int ath12k_dp_rx_ampdu_stop(struct ath12k *ar,
 		return -ENOENT;
 	}
 
-	active = peer->rx_tid[params->tid].active;
+	if (!peer->primary_link) {
+		spin_unlock_bh(&dp->dp_lock);
+		return 0;
+	}
+
+	active = peer->dp_peer->rx_tid[params->tid].active;
 
 	if (!active) {
 		spin_unlock_bh(&dp->dp_lock);
 		return 0;
 	}
 
-	ret = ath12k_wifi7_peer_rx_tid_reo_update(ar, peer, peer->rx_tid, 1, 0, false);
+	ret = ath12k_wifi7_peer_rx_tid_reo_update(ar, peer, peer->dp_peer->rx_tid,
+						  1, 0, false);
 	spin_unlock_bh(&dp->dp_lock);
 	if (ret) {
 		ath12k_warn(ab, "failed to update reo for rx tid %d: %d\n",
@@ -677,7 +684,7 @@ int ath12k_dp_rx_peer_pn_replay_config(struct ath12k_link_vif *arvif,
 	}
 
 	for (tid = 0; tid <= IEEE80211_NUM_TIDS; tid++) {
-		rx_tid = &peer->rx_tid[tid];
+		rx_tid = &peer->dp_peer->rx_tid[tid];
 		if (!rx_tid->active)
 			continue;
 
@@ -1159,7 +1166,7 @@ void ath12k_dp_rx_deliver_msdu(struct ath12k_pdev_dp *dp_pdev, struct napi_struc
 	struct ieee80211_radiotap_he *he;
 	struct ieee80211_rx_status *rx_status;
 	struct ieee80211_sta *pubsta;
-	struct ath12k_dp_link_peer *peer;
+	struct ath12k_dp_peer *peer;
 	struct ath12k_skb_rxcb *rxcb = ATH12K_SKB_RXCB(msdu);
 	struct ieee80211_rx_status *status = rx_info->rx_status;
 	u8 decap = DP_RX_DECAP_TYPE_RAW;
@@ -1176,17 +1183,19 @@ void ath12k_dp_rx_deliver_msdu(struct ath12k_pdev_dp *dp_pdev, struct napi_struc
 	if (!(status->flag & RX_FLAG_ONLY_MONITOR))
 		decap = rx_info->decap_type;
 
+	rcu_read_lock();
 	spin_lock_bh(&dp->dp_lock);
-	peer = ath12k_dp_rx_h_find_peer(dp, msdu, rx_info);
+	peer = ath12k_dp_peer_find_by_peerid_index(dp_pdev, rx_info->peer_id);
 
 	pubsta = peer ? peer->sta : NULL;
 
 	if (pubsta && pubsta->valid_links) {
 		status->link_valid = 1;
-		status->link_id = peer->link_id;
+		status->link_id = peer->hw_links[rxcb->hw_link_id];
 	}
 
 	spin_unlock_bh(&dp->dp_lock);
+	rcu_read_unlock();
 
 	ath12k_dbg(ab, ATH12K_DBG_DATA,
 		   "rx skb %p len %u peer %pM %d %s sn %u %s%s%s%s%s%s%s%s%s%s rate_idx %u vht_nss %u freq %u band %u flag 0x%x fcs-err %i mic-err %i amsdu-more %i\n",
@@ -1323,14 +1332,14 @@ int ath12k_dp_rx_peer_frag_setup(struct ath12k *ar, const u8 *peer_mac, int vdev
 	}
 
 	for (i = 0; i <= IEEE80211_NUM_TIDS; i++) {
-		rx_tid = &peer->rx_tid[i];
+		rx_tid = &peer->dp_peer->rx_tid[i];
 		rx_tid->dp = dp;
 		timer_setup(&rx_tid->frag_timer, ath12k_dp_rx_frag_timer, 0);
 		skb_queue_head_init(&rx_tid->rx_frags);
 	}
 
-	peer->tfm_mmic = tfm;
-	peer->dp_setup_done = true;
+	peer->dp_peer->tfm_mmic = tfm;
+	peer->dp_peer->dp_setup_done = true;
 	spin_unlock_bh(&dp->dp_lock);
 
 	return 0;

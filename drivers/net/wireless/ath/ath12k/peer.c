@@ -234,9 +234,6 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
 		}
 	}
 
-	peer->sec_type = HAL_ENCRYPT_TYPE_OPEN;
-	peer->sec_type_grp = HAL_ENCRYPT_TYPE_OPEN;
-
 	ar->num_peers++;
 
 	spin_unlock_bh(&dp->dp_lock);
