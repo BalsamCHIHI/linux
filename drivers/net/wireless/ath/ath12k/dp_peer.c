@@ -59,6 +59,7 @@ ath12k_dp_link_peer_find_by_addr(struct ath12k_dp *dp, const u8 *addr)
 	return rhashtable_lookup_fast(dp->rhead_peer_addr, addr,
 				      dp->rhash_peer_addr_param);
 }
+EXPORT_SYMBOL(ath12k_dp_link_peer_find_by_addr);
 
 static struct ath12k_dp_link_peer *
 ath12k_dp_link_peer_find_by_ml_id(struct ath12k_dp *dp, int ml_peer_id)
