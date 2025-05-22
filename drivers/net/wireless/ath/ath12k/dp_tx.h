@@ -20,8 +20,7 @@ ath12k_dp_tx_get_encap_type(struct ath12k_base *ab, struct sk_buff *skb);
 void ath12k_dp_tx_encap_nwifi(struct sk_buff *skb);
 u8 ath12k_dp_tx_get_tid(struct sk_buff *skb);
 void *ath12k_dp_metadata_align_skb(struct sk_buff *skb, u8 tail_len);
-int ath12k_dp_tx_align_payload(struct ath12k_base *ab,
-			       struct sk_buff **pskb);
+int ath12k_dp_tx_align_payload(struct ath12k_dp *dp, struct sk_buff **pskb);
 void ath12k_dp_tx_release_txbuf(struct ath12k_dp *dp,
 				struct ath12k_tx_desc_info *tx_desc,
 				u8 pool_id);

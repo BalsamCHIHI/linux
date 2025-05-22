@@ -146,10 +146,9 @@ static void ath12k_dp_tx_move_payload(struct sk_buff *skb,
 	}
 }
 
-int ath12k_dp_tx_align_payload(struct ath12k_base *ab,
-			       struct sk_buff **pskb)
+int ath12k_dp_tx_align_payload(struct ath12k_dp *dp, struct sk_buff **pskb)
 {
-	u32 iova_mask = ab->hw_params->iova_mask;
+	u32 iova_mask = dp->hw_params->iova_mask;
 	unsigned long offset, delta1, delta2;
 	struct sk_buff *skb2, *skb = *pskb;
 	unsigned int headroom = skb_headroom(skb);

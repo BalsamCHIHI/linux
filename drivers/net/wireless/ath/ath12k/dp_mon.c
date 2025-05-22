@@ -2101,7 +2101,7 @@ static void ath12k_dp_mon_rx_deliver_msdu(struct ath12k_pdev_dp *dp_pdev,
 		status->flag |= RX_FLAG_RADIOTAP_HE;
 	}
 
-	ath12k_wifi7_dp_extract_rx_desc_data(ab, &rx_info, rx_desc, rx_desc);
+	ath12k_wifi7_dp_extract_rx_desc_data(dp->hal, &rx_info, rx_desc, rx_desc);
 
 	spin_lock_bh(&dp->dp_lock);
 	rx_info.addr2_present = false;
@@ -3644,13 +3644,12 @@ free_skb:
 	return num_buffs_reaped;
 }
 
-int ath12k_dp_mon_process_ring(struct ath12k_base *ab, int mac_id,
+int ath12k_dp_mon_process_ring(struct ath12k_dp *dp, int mac_id,
 			       struct napi_struct *napi, int budget,
 			       enum dp_monitor_mode monitor_mode)
 {
-	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct ath12k_pdev_dp *dp_pdev;
-	u8 pdev_id = ath12k_hw_mac_id_to_pdev_id(ab->hw_params, mac_id);
+	u8 pdev_id = ath12k_hw_mac_id_to_pdev_id(dp->hw_params, mac_id);
 	int num_buffs_reaped = 0;
 
 	rcu_read_lock();
@@ -3661,7 +3660,7 @@ int ath12k_dp_mon_process_ring(struct ath12k_base *ab, int mac_id,
 		return 0;
 	}
 
-	if (ab->hw_params->rxdma1_enable) {
+	if (dp->hw_params->rxdma1_enable) {
 		if (monitor_mode == ATH12K_DP_RX_MONITOR_MODE)
 			num_buffs_reaped = ath12k_dp_mon_srng_process(dp_pdev, &budget,
 								      napi);

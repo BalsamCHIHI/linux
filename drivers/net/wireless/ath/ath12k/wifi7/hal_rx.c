@@ -320,11 +320,11 @@ ath12k_wifi7_hal_rx_msdu_link_info_get(struct hal_rx_msdu_link *link,
 	}
 }
 
-int ath12k_wifi7_hal_desc_reo_parse_err(struct ath12k_base *ab,
+int ath12k_wifi7_hal_desc_reo_parse_err(struct ath12k_dp *dp,
 					struct hal_reo_dest_ring *desc,
 					dma_addr_t *paddr, u32 *desc_bank)
 {
-	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
+	struct ath12k_base *ab = dp->ab;
 	enum hal_reo_dest_ring_push_reason push_reason;
 	enum hal_reo_dest_ring_error_code err_code;
 	u32 cookie, val;
@@ -355,12 +355,11 @@ int ath12k_wifi7_hal_desc_reo_parse_err(struct ath12k_base *ab,
 	return 0;
 }
 
-int ath12k_wifi7_hal_wbm_desc_parse_err(struct ath12k_base *ab, void *desc,
+int ath12k_wifi7_hal_wbm_desc_parse_err(struct ath12k_dp *dp, void *desc,
 					struct hal_rx_wbm_rel_info *rel_info)
 {
 	struct hal_wbm_release_ring *wbm_desc = desc;
 	struct hal_wbm_release_ring_cc_rx *wbm_cc_desc = desc;
-	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	enum hal_wbm_rel_desc_type type;
 	enum hal_wbm_rel_src_module rel_src;
 	bool hw_cc_done;

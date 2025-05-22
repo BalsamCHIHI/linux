@@ -61,6 +61,7 @@ int ath12k_wifi7_dp_tx(struct ath12k_pdev_dp *dp_pdev, struct ath12k_link_vif *a
 		       bool is_mcast)
 {
 	struct ath12k_dp *dp = dp_pdev->dp;
+	struct ath12k_hal *hal = dp->hal;
 	struct ath12k_base *ab = dp->ab;
 	struct hal_tx_info ti = {0};
 	struct ath12k_tx_desc_info *tx_desc;
@@ -82,7 +83,7 @@ int ath12k_wifi7_dp_tx(struct ath12k_pdev_dp *dp_pdev, struct ath12k_link_vif *a
 	bool tcl_ring_retry;
 	bool msdu_ext_desc = false;
 	bool add_htt_metadata = false;
-	u32 iova_mask = ab->hw_params->iova_mask;
+	u32 iova_mask = dp->hw_params->iova_mask;
 
 	if (test_bit(ATH12K_FLAG_CRASH_FLUSH, &ab->dev_flags))
 		return -ESHUTDOWN;
@@ -100,14 +101,14 @@ int ath12k_wifi7_dp_tx(struct ath12k_pdev_dp *dp_pdev, struct ath12k_link_vif *a
 	 * If all rings are full, we drop the packet.
 	 * TODO: Add throttling logic when all rings are full
 	 */
-	ring_selector = ab->hw_params->hw_ops->get_ring_selector(skb);
+	ring_selector = dp->hw_params->hw_ops->get_ring_selector(skb);
 
 tcl_ring_sel:
 	tcl_ring_retry = false;
-	ti.ring_id = ring_selector % ab->hw_params->max_tx_ring;
+	ti.ring_id = ring_selector % dp->hw_params->max_tx_ring;
 
 	ring_map |= BIT(ti.ring_id);
-	ti.rbm_id = ab->hal.tcl_to_wbm_rbm_map[ti.ring_id].rbm_id;
+	ti.rbm_id = hal->tcl_to_wbm_rbm_map[ti.ring_id].rbm_id;
 
 	tx_ring = &dp->tx_ring[ti.ring_id];
 
@@ -194,7 +195,7 @@ tcl_ring_sel:
 
 	if (iova_mask &&
 	    (unsigned long)skb->data & iova_mask) {
-		ret = ath12k_dp_tx_align_payload(ab, &skb);
+		ret = ath12k_dp_tx_align_payload(dp, &skb);
 		if (ret) {
 			ath12k_warn(ab, "failed to align TX buffer %d\n", ret);
 			/* don't bail out, give original buffer
@@ -272,7 +273,7 @@ map:
 	}
 
 	hal_ring_id = tx_ring->tcl_data_ring.ring_id;
-	tcl_ring = &ab->hal.srng_list[hal_ring_id];
+	tcl_ring = &hal->srng_list[hal_ring_id];
 
 	spin_lock_bh(&tcl_ring->lock);
 
@@ -293,8 +294,8 @@ map:
 		 * checking this ring earlier for each pkt tx.
 		 * Restart ring selection if some rings are not checked yet.
 		 */
-		if (ring_map != (BIT(ab->hw_params->max_tx_ring) - 1) &&
-		    ab->hw_params->tcl_ring_retry) {
+		if (ring_map != (BIT(dp->hw_params->max_tx_ring) - 1) &&
+		    dp->hw_params->tcl_ring_retry) {
 			tcl_ring_retry = true;
 			ring_selector++;
 		}
@@ -733,10 +734,10 @@ ath12k_wifi7_dp_tx_status_parse(struct ath12k_base *ab,
 	}
 }
 
-void ath12k_wifi7_dp_tx_completion_handler(struct ath12k_base *ab, int ring_id)
+void ath12k_wifi7_dp_tx_completion_handler(struct ath12k_dp *dp, int ring_id)
 {
+	struct ath12k_base *ab = dp->ab;
 	struct ath12k_pdev_dp *dp_pdev;
-	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	int hal_ring_id = dp->tx_ring[ring_id].tcl_comp_ring.ring_id;
 	struct hal_srng *status_ring = &ab->hal.srng_list[hal_ring_id];
 	struct ath12k_tx_desc_info *tx_desc = NULL;
@@ -791,7 +792,7 @@ void ath12k_wifi7_dp_tx_completion_handler(struct ath12k_base *ab, int ring_id)
 			desc_id = le32_get_bits(tx_status->buf_va_hi,
 						BUFFER_ADDR_INFO1_SW_COOKIE);
 
-			tx_desc = ath12k_dp_get_tx_desc(ab, desc_id);
+			tx_desc = ath12k_dp_get_tx_desc(dp, desc_id);
 		}
 		if (!tx_desc) {
 			ath12k_warn(ab, "unable to retrieve tx_desc!");

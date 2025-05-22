@@ -11,7 +11,6 @@
 #include "dp_htt.h"
 #include "dp_cmn.h"
 #include <linux/rhashtable.h>
-#include "wifi7/hal_desc.h"
 
 #define MAX_RXDMA_PER_PDEV     2
 
@@ -25,6 +24,7 @@ struct ath12k_link_vif;
 struct hal_tcl_status_ring;
 struct ath12k_ext_irq_grp;
 struct ath12k_dp_rx_tid;
+struct hal_reo_dest_ring;
 
 #define DP_MON_PURGE_TIMEOUT_MS     100
 #define DP_MON_SERVICE_BUDGET       128
@@ -379,7 +379,7 @@ struct ath12k_dp_arch_ops {
 				   struct ath12k_dp_link_peer *peer, u8 tid);
 	void (*reo_cache_flush)(struct ath12k_base *ab,
 				struct ath12k_dp_rx_tid *rx_tid);
-	int (*rx_link_desc_return)(struct ath12k_base *ab,
+	int (*rx_link_desc_return)(struct ath12k_dp *dp,
 				   struct hal_reo_dest_ring *ring,
 				   enum hal_wbm_rel_bm_act action);
 	int (*peer_rx_tid_reo_update)(struct ath12k *ar,
@@ -549,7 +549,7 @@ static inline int ath12k_dp_arch_rx_link_desc_return(struct ath12k_dp *dp,
 						     struct hal_reo_dest_ring *ring,
 						     enum hal_wbm_rel_bm_act action)
 {
-	return dp->ops->rx_link_desc_return(dp->ab, ring, action);
+	return dp->ops->rx_link_desc_return(dp, ring, action);
 }
 
 static inline int ath12k_dp_arch_peer_rx_tid_reo_update(struct ath12k_dp *dp,
@@ -623,9 +623,9 @@ int ath12k_dp_link_desc_setup(struct ath12k_base *ab,
 			      struct dp_link_desc_bank *link_desc_banks,
 			      u32 ring_type, struct hal_srng *srng,
 			      u32 n_link_desc);
-struct ath12k_rx_desc_info *ath12k_dp_get_rx_desc(struct ath12k_base *ab,
+struct ath12k_rx_desc_info *ath12k_dp_get_rx_desc(struct ath12k_dp *dp,
 						  u32 cookie);
-struct ath12k_tx_desc_info *ath12k_dp_get_tx_desc(struct ath12k_base *ab,
+struct ath12k_tx_desc_info *ath12k_dp_get_tx_desc(struct ath12k_dp *dp,
 						  u32 desc_id);
 void ath12k_mac_add_p2p_noa_ie(struct ath12k *ar,
 			       struct ieee80211_vif *vif,
