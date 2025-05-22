@@ -146,7 +146,6 @@ static struct ath12k_dp_arch_ops ath12k_wifi7_dp_arch_ops = {
 	.peer_rx_tid_qref_setup = ath12k_wifi7_peer_rx_tid_qref_setup,
 };
 
-/* TODO: remove export once this file is built with wifi7 ko */
 struct ath12k_dp *ath12k_wifi7_dp_init(struct ath12k_base *ab)
 {
 	struct ath12k_dp *dp;
@@ -164,10 +163,8 @@ struct ath12k_dp *ath12k_wifi7_dp_init(struct ath12k_base *ab)
 
 	return dp;
 }
-EXPORT_SYMBOL(ath12k_wifi7_dp_init);
 
 void ath12k_wifi7_dp_deinit(struct ath12k_dp *dp)
 {
 	kfree(dp);
 }
-EXPORT_SYMBOL(ath12k_wifi7_dp_deinit);

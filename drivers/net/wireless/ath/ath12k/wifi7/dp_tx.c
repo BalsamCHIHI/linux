@@ -56,7 +56,6 @@ static int ath12k_wifi7_dp_prepare_htt_metadata(struct sk_buff *skb)
 	return 0;
 }
 
-/* TODO: Remove the export once this file is built with wifi7 ko */
 int ath12k_wifi7_dp_tx(struct ath12k_pdev_dp *dp_pdev, struct ath12k_link_vif *arvif,
 		       struct sk_buff *skb, bool gsn_valid, int mcbc_gsn,
 		       bool is_mcast)
@@ -350,7 +349,6 @@ fail_remove_tx_buf:
 
 	return ret;
 }
-EXPORT_SYMBOL(ath12k_wifi7_dp_tx);
 
 static void ath12k_dp_tx_free_txbuf(struct ath12k_base *ab,
 				    struct dp_tx_ring *tx_ring,

@@ -774,4 +774,3 @@ const struct hal_ops hal_qcn9274_ops = {
 	.cc_config = ath12k_wifi7_hal_cc_config,
 	.get_idle_link_rbm = ath12k_wifi7_hal_get_idle_link_rbm,
 };
-EXPORT_SYMBOL(hal_qcn9274_ops);
