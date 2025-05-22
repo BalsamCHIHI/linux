@@ -627,4 +627,14 @@ struct ath12k_rx_desc_info *ath12k_dp_get_rx_desc(struct ath12k_base *ab,
 						  u32 cookie);
 struct ath12k_tx_desc_info *ath12k_dp_get_tx_desc(struct ath12k_base *ab,
 						  u32 desc_id);
+void ath12k_mac_add_p2p_noa_ie(struct ath12k *ar,
+			       struct ieee80211_vif *vif,
+			       struct sk_buff *skb,
+			       bool is_prb_rsp);
+u8 ath12k_mac_get_tx_link(struct ieee80211_sta *sta, struct ieee80211_vif *vif,
+			  u8 link, struct sk_buff *skb, u32 info_flags);
+void ath12k_mlo_mcast_update_tx_link_address(struct ieee80211_vif *vif,
+					     u8 link_id, struct sk_buff *skb,
+					     u32 info_flags);
+
 #endif

@@ -245,14 +245,4 @@ int ath12k_mac_op_get_txpower(struct ieee80211_hw *hw,
 			      int *dbm);
 int ath12k_mac_mgmt_tx(struct ath12k *ar, struct sk_buff *skb,
 		       bool is_prb_rsp);
-void ath12k_mac_add_p2p_noa_ie(struct ath12k *ar,
-			       struct ieee80211_vif *vif,
-			       struct sk_buff *skb,
-			       bool is_prb_rsp);
-u8 ath12k_mac_get_tx_link(struct ieee80211_sta *sta, struct ieee80211_vif *vif,
-			  u8 link, struct sk_buff *skb, u32 info_flags);
-
-void ath12k_mlo_mcast_update_tx_link_address(struct ieee80211_vif *vif,
-					     u8 link_id, struct sk_buff *skb,
-					     u32 info_flags);
 #endif
