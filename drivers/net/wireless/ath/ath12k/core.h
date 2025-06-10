@@ -345,6 +345,10 @@ struct ath12k_link_vif {
 	bool is_sta_assoc_link;
 
 	struct ath12k_reg_tpc_power_info reg_tpc_info;
+
+	bool group_key_valid;
+	struct wmi_vdev_install_key_arg group_key;
+	bool pairwise_key_done;
 };
 
 struct ath12k_vif {
@@ -380,9 +384,7 @@ struct ath12k_vif {
 	struct ath12k_link_vif __rcu *link[ATH12K_NUM_MAX_LINKS];
 	struct ath12k_vif_cache *cache[IEEE80211_MLD_MAX_NUM_LINKS];
 	/* indicates bitmap of link vif created in FW */
-	u16 links_map;
-	u8 last_scan_link;
-
+	u32 links_map;
 	/* Must be last - ends in a flexible-array member.
 	 *
 	 * FIXME: Driver should not copy struct ieee80211_chanctx_conf,
@@ -665,6 +667,15 @@ struct ath12k_per_peer_tx_stats {
 	bool is_ampdu;
 };
 
+struct ath12k_pdev_rssi_offsets {
+	s32 temp_offset;
+	s8 min_nf_dbm;
+	/* Cache the sum here to avoid calculating it every time in hot path
+	 * noise_floor = min_nf_dbm + temp_offset
+	 */
+	s32 noise_floor;
+};
+
 #define ATH12K_FLUSH_TIMEOUT (5 * HZ)
 #define ATH12K_VDEV_DELETE_TIMEOUT_HZ (5 * HZ)
 
@@ -814,6 +825,7 @@ struct ath12k {
 	unsigned long last_tx_power_update;
 
 	s8 max_allowed_tx_power;
+	struct ath12k_pdev_rssi_offsets rssi_info;
 };
 
 struct ath12k_hw {
@@ -1452,6 +1464,13 @@ static inline struct ath12k_base *ath12k_ag_to_ab(struct ath12k_hw_group *ag,
 						  u8 device_id)
 {
 	return ag->ab[device_id];
+}
+
+static inline s32 ath12k_pdev_get_noise_floor(struct ath12k *ar)
+{
+	lockdep_assert_held(&ar->data_lock);
+
+	return ar->rssi_info.noise_floor;
 }
 
 #endif /* _CORE_H_ */
