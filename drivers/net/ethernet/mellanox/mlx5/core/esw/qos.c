@@ -1353,7 +1353,7 @@ static int esw_qos_switch_tc_arbiter_node_to_vports(
 					     &node->ix);
 	if (err) {
 		NL_SET_ERR_MSG_MOD(extack,
-				   "Failed to create scheduling element for vports node when disabliing vports TC QoS");
+				   "Failed to create scheduling element for vports node when disabling vports TC QoS");
 		return err;
 	}
 
@@ -2043,6 +2043,7 @@ static int esw_qos_vports_node_update_parent(struct mlx5_esw_sched_node *node,
 		return err;
 	}
 	esw_qos_node_set_parent(node, parent);
+	node->bw_share = 0;
 
 	return 0;
 }

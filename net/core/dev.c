@@ -1267,33 +1267,32 @@ struct net_device *dev_getfirstbyhwtype(struct net *net, unsigned short type)
 EXPORT_SYMBOL(dev_getfirstbyhwtype);
 
 /**
- *	__dev_get_by_flags - find any device with given flags
- *	@net: the applicable net namespace
- *	@if_flags: IFF_* values
- *	@mask: bitmask of bits in if_flags to check
+ * netdev_get_by_flags_rcu - find any device with given flags
+ * @net: the applicable net namespace
+ * @tracker: tracking object for the acquired reference
+ * @if_flags: IFF_* values
+ * @mask: bitmask of bits in if_flags to check
  *
- *	Search for any interface with the given flags. Returns NULL if a device
- *	is not found or a pointer to the device. Must be called inside
- *	rtnl_lock(), and result refcount is unchanged.
+ * Search for any interface with the given flags.
+ *
+ * Context: rcu_read_lock() must be held.
+ * Returns: NULL if a device is not found or a pointer to the device.
  */
-
-struct net_device *__dev_get_by_flags(struct net *net, unsigned short if_flags,
-				      unsigned short mask)
+struct net_device *netdev_get_by_flags_rcu(struct net *net, netdevice_tracker *tracker,
+					   unsigned short if_flags, unsigned short mask)
 {
-	struct net_device *dev, *ret;
+	struct net_device *dev;
 
-	ASSERT_RTNL();
-
-	ret = NULL;
-	for_each_netdev(net, dev) {
-		if (((dev->flags ^ if_flags) & mask) == 0) {
-			ret = dev;
-			break;
+	for_each_netdev_rcu(net, dev) {
+		if (((READ_ONCE(dev->flags) ^ if_flags) & mask) == 0) {
+			netdev_hold(dev, tracker, GFP_ATOMIC);
+			return dev;
 		}
 	}
-	return ret;
+
+	return NULL;
 }
-EXPORT_SYMBOL(__dev_get_by_flags);
+EXPORT_IPV6_MOD(netdev_get_by_flags_rcu);
 
 /**
  *	dev_valid_name - check if name is okay for network device
@@ -4026,7 +4025,10 @@ static void qdisc_pkt_len_init(struct sk_buff *skb)
 		unsigned int hdr_len;
 
 		/* mac layer + network layer */
-		hdr_len = skb_transport_offset(skb);
+		if (!skb->encapsulation)
+			hdr_len = skb_transport_offset(skb);
+		else
+			hdr_len = skb_inner_transport_offset(skb);
 
 		/* + transport layer */
 		if (likely(shinfo->gso_type & (SKB_GSO_TCPV4 | SKB_GSO_TCPV6))) {
@@ -6959,15 +6961,37 @@ static void napi_stop_kthread(struct napi_struct *napi)
 	napi->thread = NULL;
 }
 
+int napi_set_threaded(struct napi_struct *napi, bool threaded)
+{
+	if (threaded) {
+		if (!napi->thread) {
+			int err = napi_kthread_create(napi);
+
+			if (err)
+				return err;
+		}
+	}
+
+	if (napi->config)
+		napi->config->threaded = threaded;
+
+	if (!threaded && napi->thread) {
+		napi_stop_kthread(napi);
+	} else {
+		/* Make sure kthread is created before THREADED bit is set. */
+		smp_mb__before_atomic();
+		assign_bit(NAPI_STATE_THREADED, &napi->state, threaded);
+	}
+
+	return 0;
+}
+
 int dev_set_threaded(struct net_device *dev, bool threaded)
 {
 	struct napi_struct *napi;
 	int err = 0;
 
 	netdev_assert_locked_or_invisible(dev);
-
-	if (dev->threaded == threaded)
-		return 0;
 
 	if (threaded) {
 		list_for_each_entry(napi, &dev->napi_list, dev_list) {
@@ -7219,6 +7243,8 @@ static void napi_restore_config(struct napi_struct *n)
 		napi_hash_add(n);
 		n->config->napi_id = n->napi_id;
 	}
+
+	WARN_ON_ONCE(napi_set_threaded(n, n->config->threaded));
 }
 
 static void napi_save_config(struct napi_struct *n)
@@ -11976,21 +12002,8 @@ static void netdev_rss_contexts_free(struct net_device *dev)
 
 	mutex_lock(&dev->ethtool->rss_lock);
 	xa_for_each(&dev->ethtool->rss_ctx, context, ctx) {
-		struct ethtool_rxfh_param rxfh;
-
-		rxfh.indir = ethtool_rxfh_context_indir(ctx);
-		rxfh.key = ethtool_rxfh_context_key(ctx);
-		rxfh.hfunc = ctx->hfunc;
-		rxfh.input_xfrm = ctx->input_xfrm;
-		rxfh.rss_context = context;
-		rxfh.rss_delete = true;
-
 		xa_erase(&dev->ethtool->rss_ctx, context);
-		if (dev->ethtool_ops->create_rxfh_context)
-			dev->ethtool_ops->remove_rxfh_context(dev, ctx,
-							      context, NULL);
-		else
-			dev->ethtool_ops->set_rxfh(dev, &rxfh, NULL);
+		dev->ethtool_ops->remove_rxfh_context(dev, ctx, context, NULL);
 		kfree(ctx);
 	}
 	xa_destroy(&dev->ethtool->rss_ctx);
