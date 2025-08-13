@@ -995,6 +995,13 @@ struct ath11k_base {
 
 	const struct firmware *cal_file;
 
+	const struct firmware *fwcfg_file;
+	char fw_board_name[100];
+	struct {
+		u32 flags;
+		char bname[100];
+	} fwcfg;
+
 	/* Below regd's are protected by ab->data_lock */
 	/* This is the regd set for every radio
 	 * by the firmware during initialization
