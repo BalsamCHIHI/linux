@@ -85,6 +85,7 @@ struct ce_ie_addr {
 struct ce_remap {
 	u32 base;
 	u32 size;
+	u32 cmem_offset;
 };
 
 struct ce_attr {
@@ -172,10 +173,6 @@ struct ath12k_ce {
 	spinlock_t ce_lock;
 	struct ath12k_hp_update_timer hp_timer[CE_COUNT_MAX];
 };
-
-extern const struct ce_attr ath12k_host_ce_config_qcn9274[];
-extern const struct ce_attr ath12k_host_ce_config_wcn7850[];
-extern const struct ce_attr ath12k_host_ce_config_ipq5332[];
 
 void ath12k_ce_cleanup_pipes(struct ath12k_base *ab);
 void ath12k_ce_rx_replenish_retry(struct timer_list *t);

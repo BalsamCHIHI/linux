@@ -16,7 +16,6 @@ ath12k-y += core.o \
 	    ce.o \
 	    peer.o \
 	    dbring.o \
-	    hw.o \
 	    mhi.o \
 	    pci.o \
 	    dp_mon.o \
@@ -24,6 +23,9 @@ ath12k-y += core.o \
 	    p2p.o
 
 ath12k-$(CONFIG_ATH12K_AHB) += ahb.o
+
+obj-$(CONFIG_ATH12K) += wifi7/
+
 ath12k-$(CONFIG_ATH12K_DEBUGFS) += debugfs.o debugfs_htt_stats.o debugfs_sta.o
 ath12k-$(CONFIG_ACPI) += acpi.o
 ath12k-$(CONFIG_ATH12K_TRACING) += trace.o

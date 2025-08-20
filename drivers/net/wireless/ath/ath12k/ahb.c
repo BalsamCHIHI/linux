@@ -16,18 +16,11 @@
 #include "debug.h"
 #include "hif.h"
 
-static const struct of_device_id ath12k_ahb_of_match[] = {
-	{ .compatible = "qcom,ipq5332-wifi",
-	  .data = (void *)ATH12K_HW_IPQ5332_HW10,
-	},
-	{ }
-};
-
-MODULE_DEVICE_TABLE(of, ath12k_ahb_of_match);
-
 #define ATH12K_IRQ_CE0_OFFSET 4
 #define ATH12K_MAX_UPDS 1
 #define ATH12K_UPD_IRQ_WRD_LEN  18
+
+static struct ath12k_ahb_driver *ath12k_ahb_family_drivers[ATH12K_DEVICE_FAMILY_MAX];
 static const char ath12k_userpd_irq[][9] = {"spawn",
 				     "ready",
 				     "stop-ack"};
@@ -130,7 +123,7 @@ enum ext_irq_num {
 
 static u32 ath12k_ahb_read32(struct ath12k_base *ab, u32 offset)
 {
-	if (ab->ce_remap && offset < HAL_SEQ_WCSS_CMEM_OFFSET)
+	if (ab->ce_remap && offset < ab->cmem_offset)
 		return ioread32(ab->mem_ce + offset);
 	return ioread32(ab->mem + offset);
 }
@@ -138,7 +131,7 @@ static u32 ath12k_ahb_read32(struct ath12k_base *ab, u32 offset)
 static void ath12k_ahb_write32(struct ath12k_base *ab, u32 offset,
 			       u32 value)
 {
-	if (ab->ce_remap && offset < HAL_SEQ_WCSS_CMEM_OFFSET)
+	if (ab->ce_remap && offset < ab->cmem_offset)
 		iowrite32(value, ab->mem_ce + offset);
 	else
 		iowrite32(value, ab->mem + offset);
@@ -698,7 +691,7 @@ static int ath12k_ahb_map_service_to_pipe(struct ath12k_base *ab, u16 service_id
 	return 0;
 }
 
-static const struct ath12k_hif_ops ath12k_ahb_hif_ops_ipq5332 = {
+static const struct ath12k_hif_ops ath12k_ahb_hif_ops = {
 	.start = ath12k_ahb_start,
 	.stop = ath12k_ahb_stop,
 	.read32 = ath12k_ahb_read32,
@@ -935,7 +928,8 @@ static int ath12k_ahb_resource_init(struct ath12k_base *ab)
 			goto err_mem_unmap;
 		}
 		ab->ce_remap = true;
-		ab->ce_remap_base_addr = HAL_IPQ5332_CE_WFSS_REG_BASE;
+		ab->cmem_offset = ce_remap->cmem_offset;
+		ab->ce_remap_base_addr = ce_remap->base;
 	}
 
 	ab_ahb->xo_clk = devm_clk_get(ab->dev, "xo");
@@ -988,13 +982,34 @@ static void ath12k_ahb_resource_deinit(struct ath12k_base *ab)
 	ab_ahb->xo_clk = NULL;
 }
 
+static enum ath12k_device_family
+ath12k_ahb_get_device_family(const struct platform_device *pdev)
+{
+	enum ath12k_device_family device_family_id;
+	struct ath12k_ahb_driver *driver;
+	const struct of_device_id *of_id;
+
+	for (device_family_id = ATH12K_DEVICE_FAMILY_START;
+	     device_family_id < ATH12K_DEVICE_FAMILY_MAX; device_family_id++) {
+		driver = ath12k_ahb_family_drivers[device_family_id];
+		if (driver) {
+			of_id = of_match_device(driver->id_table, &pdev->dev);
+			if (of_id) {
+				/* Found the driver */
+				return device_family_id;
+			}
+		}
+	}
+
+	return ATH12K_DEVICE_FAMILY_MAX;
+}
+
 static int ath12k_ahb_probe(struct platform_device *pdev)
 {
-	struct ath12k_base *ab;
-	const struct ath12k_hif_ops *hif_ops;
+	enum ath12k_device_family device_id;
 	struct ath12k_ahb *ab_ahb;
-	enum ath12k_hw_rev hw_rev;
-	u32 addr, userpd_id;
+	struct ath12k_base *ab;
+	u32 addr;
 	int ret;
 
 	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
@@ -1008,24 +1023,32 @@ static int ath12k_ahb_probe(struct platform_device *pdev)
 	if (!ab)
 		return -ENOMEM;
 
-	hw_rev = (enum ath12k_hw_rev)(kernel_ulong_t)of_device_get_match_data(&pdev->dev);
-	switch (hw_rev) {
-	case ATH12K_HW_IPQ5332_HW10:
-		hif_ops = &ath12k_ahb_hif_ops_ipq5332;
-		userpd_id = ATH12K_IPQ5332_USERPD_ID;
-		break;
-	default:
-		ret = -EOPNOTSUPP;
+	ab_ahb = ath12k_ab_to_ahb(ab);
+	ab_ahb->ab = ab;
+	ab->hif.ops = &ath12k_ahb_hif_ops;
+	ab->pdev = pdev;
+	platform_set_drvdata(pdev, ab);
+
+	device_id = ath12k_ahb_get_device_family(pdev);
+	if (device_id >= ATH12K_DEVICE_FAMILY_MAX) {
+		ath12k_err(ab, "failed to get device family: %d\n", device_id);
+		ret = -EINVAL;
 		goto err_core_free;
 	}
 
-	ab->hif.ops = hif_ops;
-	ab->pdev = pdev;
-	ab->hw_rev = hw_rev;
-	platform_set_drvdata(pdev, ab);
-	ab_ahb = ath12k_ab_to_ahb(ab);
-	ab_ahb->ab = ab;
-	ab_ahb->userpd_id = userpd_id;
+	ath12k_dbg(ab, ATH12K_DBG_AHB, "AHB device family id: %d\n", device_id);
+
+	ab_ahb->device_family_ops = &ath12k_ahb_family_drivers[device_id]->ops;
+
+	/* Call device specific probe. This is the callback that can
+	 * be used to override any ops in future
+	 * probe is validated for NULL during registration.
+	 */
+	ret = ab_ahb->device_family_ops->probe(pdev);
+	if (ret) {
+		ath12k_err(ab, "failed to probe device: %d\n", ret);
+		goto err_core_free;
+	}
 
 	/* Set fixed_mem_region to true for platforms that support fixed memory
 	 * reservation from DT. If memory is reserved from DT for FW, ath12k driver
@@ -1135,21 +1158,46 @@ qmi_fail:
 	ath12k_ahb_free_resources(ab);
 }
 
-static struct platform_driver ath12k_ahb_driver = {
-	.driver         = {
-		.name   = "ath12k_ahb",
-		.of_match_table = ath12k_ahb_of_match,
-	},
-	.probe  = ath12k_ahb_probe,
-	.remove = ath12k_ahb_remove,
-};
-
-int ath12k_ahb_init(void)
+int ath12k_ahb_register_driver(const enum ath12k_device_family device_id,
+			       struct ath12k_ahb_driver *driver)
 {
-	return platform_driver_register(&ath12k_ahb_driver);
-}
+	struct platform_driver *ahb_driver;
 
-void ath12k_ahb_exit(void)
-{
-	platform_driver_unregister(&ath12k_ahb_driver);
+	if (device_id >= ATH12K_DEVICE_FAMILY_MAX)
+		return -EINVAL;
+
+	if (!driver || !driver->ops.probe)
+		return -EINVAL;
+
+	if (ath12k_ahb_family_drivers[device_id]) {
+		pr_err("Driver already registered for id %d\n", device_id);
+		return -EALREADY;
+	}
+
+	ath12k_ahb_family_drivers[device_id] = driver;
+
+	ahb_driver = &ath12k_ahb_family_drivers[device_id]->driver;
+	ahb_driver->driver.name = driver->name;
+	ahb_driver->driver.of_match_table = driver->id_table;
+	ahb_driver->probe  = ath12k_ahb_probe;
+	ahb_driver->remove = ath12k_ahb_remove;
+
+	return platform_driver_register(ahb_driver);
 }
+EXPORT_SYMBOL(ath12k_ahb_register_driver);
+
+void ath12k_ahb_unregister_driver(const enum ath12k_device_family device_id)
+{
+	struct platform_driver *ahb_driver;
+
+	if (device_id >= ATH12K_DEVICE_FAMILY_MAX)
+		return;
+
+	if (!ath12k_ahb_family_drivers[device_id])
+		return;
+
+	ahb_driver = &ath12k_ahb_family_drivers[device_id]->driver;
+	platform_driver_unregister(ahb_driver);
+	ath12k_ahb_family_drivers[device_id] = NULL;
+}
+EXPORT_SYMBOL(ath12k_ahb_unregister_driver);

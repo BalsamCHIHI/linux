@@ -8,7 +8,7 @@
 #include "peer.h"
 #include "debug.h"
 
-static struct ath12k_ml_peer *ath12k_peer_ml_find(struct ath12k_hw *ah, const u8 *addr)
+struct ath12k_ml_peer *ath12k_peer_ml_find(struct ath12k_hw *ah, const u8 *addr)
 {
 	struct ath12k_ml_peer *ml_peer;
 
@@ -23,6 +23,7 @@ static struct ath12k_ml_peer *ath12k_peer_ml_find(struct ath12k_hw *ah, const u8
 
 	return NULL;
 }
+EXPORT_SYMBOL(ath12k_peer_ml_find);
 
 struct ath12k_peer *ath12k_peer_find(struct ath12k_base *ab, int vdev_id,
 				     const u8 *addr)
@@ -78,6 +79,7 @@ struct ath12k_peer *ath12k_peer_find_by_addr(struct ath12k_base *ab,
 
 	return NULL;
 }
+EXPORT_SYMBOL(ath12k_peer_find_by_addr);
 
 static struct ath12k_peer *ath12k_peer_find_by_ml_id(struct ath12k_base *ab,
 						     int ml_peer_id)
@@ -99,6 +101,9 @@ struct ath12k_peer *ath12k_peer_find_by_id(struct ath12k_base *ab,
 	struct ath12k_peer *peer;
 
 	lockdep_assert_held(&ab->base_lock);
+
+	if (peer_id == HAL_INVALID_PEERID)
+		return NULL;
 
 	if (peer_id & ATH12K_PEER_ML_ID_VALID)
 		return ath12k_peer_find_by_ml_id(ab, peer_id);
