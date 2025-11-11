@@ -100,6 +100,8 @@
  */
 #define GVE_DQO_QPL_ONDEMAND_ALLOC_THRESHOLD 96
 
+#define GVE_DQO_RX_HWTSTAMP_VALID 0x1
+
 /* Each slot in the desc ring has a 1:1 mapping to a slot in the data ring */
 struct gve_rx_desc_queue {
 	struct gve_rx_desc *desc_ring; /* the descriptor ring */
@@ -189,6 +191,9 @@ struct gve_header_buf {
 struct gve_rx_buf_state_dqo {
 	/* The page posted to HW. */
 	struct gve_rx_slot_page_info page_info;
+
+	/* XSK buffer */
+	struct xdp_buff *xsk_buff;
 
 	/* The DMA address corresponding to `page_info`. */
 	dma_addr_t addr;
@@ -331,7 +336,6 @@ struct gve_rx_ring {
 
 	/* XDP stuff */
 	struct xdp_rxq_info xdp_rxq;
-	struct xdp_rxq_info xsk_rxq;
 	struct xsk_buff_pool *xsk_pool;
 	struct page_frag_cache page_cache; /* Page cache to allocate XDP frames */
 };
@@ -400,11 +404,17 @@ enum gve_packet_state {
 	GVE_PACKET_STATE_PENDING_REINJECT_COMPL,
 	/* No valid completion received within the specified timeout. */
 	GVE_PACKET_STATE_TIMED_OUT_COMPL,
+	/* XSK pending packet has received a packet/reinjection completion, or
+	 * has timed out. At this point, the pending packet can be counted by
+	 * xsk_tx_complete and freed.
+	 */
+	GVE_PACKET_STATE_XSK_COMPLETE,
 };
 
 enum gve_tx_pending_packet_dqo_type {
 	GVE_TX_PENDING_PACKET_DQO_SKB,
-	GVE_TX_PENDING_PACKET_DQO_XDP_FRAME
+	GVE_TX_PENDING_PACKET_DQO_XDP_FRAME,
+	GVE_TX_PENDING_PACKET_DQO_XSK,
 };
 
 struct gve_tx_pending_packet_dqo {
@@ -441,10 +451,10 @@ struct gve_tx_pending_packet_dqo {
 	/* Identifies the current state of the packet as defined in
 	 * `enum gve_packet_state`.
 	 */
-	u8 state : 2;
+	u8 state : 3;
 
 	/* gve_tx_pending_packet_dqo_type */
-	u8 type : 1;
+	u8 type : 2;
 
 	/* If packet is an outstanding miss completion, then the packet is
 	 * freed if the corresponding re-injection completion is not received
@@ -513,6 +523,8 @@ struct gve_tx_ring {
 				/* Cached value of `dqo_compl.free_tx_qpl_buf_cnt` */
 				u32 free_tx_qpl_buf_cnt;
 			};
+
+			atomic_t xsk_reorder_queue_tail;
 		} dqo_tx;
 	};
 
@@ -545,6 +557,9 @@ struct gve_tx_ring {
 
 			/* Last TX ring index fetched by HW */
 			atomic_t hw_tx_head;
+
+			u16 xsk_reorder_queue_head;
+			u16 xsk_reorder_queue_tail;
 
 			/* List to track pending packets which received a miss
 			 * completion but not a corresponding reinjection.
@@ -598,6 +613,8 @@ struct gve_tx_ring {
 
 			struct gve_tx_pending_packet_dqo *pending_packets;
 			s16 num_pending_packets;
+
+			u16 *xsk_reorder_queue;
 
 			u32 complq_mask; /* complq size is complq_mask + 1 */
 
@@ -803,7 +820,9 @@ struct gve_priv {
 
 	struct gve_tx_queue_config tx_cfg;
 	struct gve_rx_queue_config rx_cfg;
+	unsigned long *xsk_pools; /* bitmap of RX queues with XSK pools */
 	u32 num_ntfy_blks; /* split between TX and RX so must be even */
+	int numa_node;
 
 	struct gve_registers __iomem *reg_bar0; /* see gve_register.h */
 	__be32 __iomem *db_bar2; /* "array" of doorbells */
@@ -1232,7 +1251,8 @@ void gve_rx_start_ring_gqi(struct gve_priv *priv, int idx);
 void gve_rx_stop_ring_gqi(struct gve_priv *priv, int idx);
 u16 gve_get_pkt_buf_size(const struct gve_priv *priv, bool enable_hplit);
 bool gve_header_split_supported(const struct gve_priv *priv);
-int gve_set_hsplit_config(struct gve_priv *priv, u8 tcp_data_split);
+int gve_set_hsplit_config(struct gve_priv *priv, u8 tcp_data_split,
+			  struct gve_rx_alloc_rings_cfg *rx_alloc_cfg);
 /* rx buffer handling */
 int gve_buf_ref_cnt(struct gve_rx_buf_state_dqo *bs);
 void gve_free_page_dqo(struct gve_priv *priv, struct gve_rx_buf_state_dqo *bs,
