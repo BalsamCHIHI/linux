@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 /*
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include "core.h"
@@ -52,7 +52,7 @@ ath12k_write_simulate_fw_crash(struct file *file,
 	struct ath12k_base *ab = file->private_data;
 	struct ath12k_pdev *pdev;
 	struct ath12k *ar = NULL;
-	char buf[32] = {0};
+	char buf[32] = {};
 	int i, ret;
 	ssize_t rc;
 
@@ -816,7 +816,7 @@ static ssize_t ath12k_write_extd_rx_stats(struct file *file,
 					  size_t count, loff_t *ppos)
 {
 	struct ath12k *ar = file->private_data;
-	struct htt_rx_ring_tlv_filter tlv_filter = {0};
+	struct htt_rx_ring_tlv_filter tlv_filter = {};
 	u32 ring_id, rx_filter = 0;
 	bool enable;
 	int ret, i;
@@ -1178,6 +1178,9 @@ static ssize_t ath12k_debugfs_dump_device_dp_stats(struct file *file,
 		len += scnprintf(buf + len, size - len, "\n");
 	}
 
+	len += scnprintf(buf + len, size - len, "\nREO excep MSDU buf type:%u\n",
+			 device_stats->reo_excep_msdu_buf_type);
+
 	len += scnprintf(buf + len, size - len, "\nRx WBM REL SRC Errors:\n");
 
 	for (i = 0; i < HAL_WBM_REL_SRC_MODULE_MAX; i++) {
@@ -1217,7 +1220,7 @@ void ath12k_debugfs_pdev_create(struct ath12k_base *ab)
 void ath12k_debugfs_soc_create(struct ath12k_base *ab)
 {
 	bool dput_needed;
-	char soc_name[64] = { 0 };
+	char soc_name[64] = {};
 	struct dentry *debugfs_ath12k;
 
 	debugfs_ath12k = debugfs_lookup("ath12k", NULL);
@@ -1283,6 +1286,7 @@ static int ath12k_open_vdev_stats(struct inode *inode, struct file *file)
 
 	ath12k_wmi_fw_stats_dump(ar, &ar->fw_stats, param.stats_id,
 				 buf);
+	ath12k_fw_stats_reset(ar);
 
 	file->private_data = no_free_ptr(buf);
 
@@ -1349,12 +1353,7 @@ static int ath12k_open_bcn_stats(struct inode *inode, struct file *file)
 
 	ath12k_wmi_fw_stats_dump(ar, &ar->fw_stats, param.stats_id,
 				 buf);
-	/* since beacon stats request is looped for all active VDEVs, saved fw
-	 * stats is not freed for each request until done for all active VDEVs
-	 */
-	spin_lock_bh(&ar->data_lock);
-	ath12k_fw_stats_bcn_free(&ar->fw_stats.bcn);
-	spin_unlock_bh(&ar->data_lock);
+	ath12k_fw_stats_reset(ar);
 
 	file->private_data = no_free_ptr(buf);
 
@@ -1415,6 +1414,7 @@ static int ath12k_open_pdev_stats(struct inode *inode, struct file *file)
 
 	ath12k_wmi_fw_stats_dump(ar, &ar->fw_stats, param.stats_id,
 				 buf);
+	ath12k_fw_stats_reset(ar);
 
 	file->private_data = no_free_ptr(buf);
 
@@ -1470,7 +1470,7 @@ void ath12k_debugfs_register(struct ath12k *ar)
 	struct ath12k_base *ab = ar->ab;
 	struct ieee80211_hw *hw = ar->ah->hw;
 	char pdev_name[5];
-	char buf[100] = {0};
+	char buf[100] = {};
 
 	scnprintf(pdev_name, sizeof(pdev_name), "%s%d", "mac", ar->pdev_idx);
 
