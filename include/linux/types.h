@@ -50,6 +50,7 @@ typedef __kernel_old_gid_t	old_gid_t;
 
 #if defined(__GNUC__)
 typedef __kernel_loff_t		loff_t;
+typedef __kernel_uoff_t		uoff_t;
 #endif
 
 /*
@@ -169,6 +170,11 @@ typedef u64 phys_addr_t;
 #else
 typedef u32 phys_addr_t;
 #endif
+
+struct phys_vec {
+	phys_addr_t	paddr;
+	size_t		len;
+};
 
 typedef phys_addr_t resource_size_t;
 

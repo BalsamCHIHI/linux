@@ -22,6 +22,7 @@
 #include <linux/fs.h>
 #include <linux/dma-fence.h>
 #include <linux/wait.h>
+#include <linux/pci-p2pdma.h>
 
 struct device;
 struct dma_buf;
@@ -428,18 +429,6 @@ struct dma_buf {
 
 		__poll_t active;
 	} cb_in, cb_out;
-#ifdef CONFIG_DMABUF_SYSFS_STATS
-	/**
-	 * @sysfs_entry:
-	 *
-	 * For exposing information about this buffer in sysfs. See also
-	 * `DMA-BUF statistics`_ for the uapi this enables.
-	 */
-	struct dma_buf_sysfs_entry {
-		struct kobject kobj;
-		struct dma_buf *dmabuf;
-	} *sysfs_entry;
-#endif
 };
 
 /**
@@ -528,6 +517,16 @@ struct dma_buf_export_info {
 	int flags;
 	struct dma_resv *resv;
 	void *priv;
+};
+
+/**
+ * struct dma_buf_phys_vec - describe continuous chunk of memory
+ * @paddr:   physical address of that chunk
+ * @len:     Length of this chunk
+ */
+struct dma_buf_phys_vec {
+	phys_addr_t paddr;
+	size_t len;
 };
 
 /**

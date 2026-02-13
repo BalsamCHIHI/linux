@@ -29,6 +29,7 @@
 #include <linux/slab.h>
 #include <linux/capability.h>
 #include <linux/blkdev.h>
+#include <linux/blk-crypto.h>
 #include <linux/file.h>
 #include <linux/quotaops.h>
 #include <linux/highmem.h>
@@ -157,8 +158,8 @@ static void __end_buffer_read_notouch(struct buffer_head *bh, int uptodate)
  */
 void end_buffer_read_sync(struct buffer_head *bh, int uptodate)
 {
-	__end_buffer_read_notouch(bh, uptodate);
 	put_bh(bh);
+	__end_buffer_read_notouch(bh, uptodate);
 }
 EXPORT_SYMBOL(end_buffer_read_sync);
 
@@ -611,9 +612,9 @@ int generic_buffers_fsync_noflush(struct file *file, loff_t start, loff_t end,
 		return err;
 
 	ret = sync_mapping_buffers(inode->i_mapping);
-	if (!(inode->i_state & I_DIRTY_ALL))
+	if (!(inode_state_read_once(inode) & I_DIRTY_ALL))
 		goto out;
-	if (datasync && !(inode->i_state & I_DIRTY_DATASYNC))
+	if (datasync && !(inode_state_read_once(inode) & I_DIRTY_DATASYNC))
 		goto out;
 
 	err = sync_inode_metadata(inode, 1);
@@ -1122,15 +1123,9 @@ __getblk_slow(struct block_device *bdev, sector_t block,
 {
 	bool blocking = gfpflags_allow_blocking(gfp);
 
-	/* Size must be multiple of hard sectorsize */
-	if (unlikely(size & (bdev_logical_block_size(bdev)-1) ||
-			(size < 512 || size > PAGE_SIZE))) {
-		printk(KERN_ERR "getblk(): invalid block size %d requested\n",
-					size);
-		printk(KERN_ERR "logical block size: %d\n",
-					bdev_logical_block_size(bdev));
-
-		dump_stack();
+	if (WARN_ON_ONCE(!IS_ALIGNED(size, bdev_logical_block_size(bdev)))) {
+		printk(KERN_ERR "getblk(): block size %d not aligned to logical block size %d\n",
+		       size, bdev_logical_block_size(bdev));
 		return NULL;
 	}
 
@@ -2271,9 +2266,8 @@ int block_write_begin(struct address_space *mapping, loff_t pos, unsigned len,
 }
 EXPORT_SYMBOL(block_write_begin);
 
-int block_write_end(struct file *file, struct address_space *mapping,
-			loff_t pos, unsigned len, unsigned copied,
-			struct folio *folio, void *fsdata)
+int block_write_end(loff_t pos, unsigned len, unsigned copied,
+		struct folio *folio)
 {
 	size_t start = pos - folio_pos(folio);
 
@@ -2304,15 +2298,15 @@ int block_write_end(struct file *file, struct address_space *mapping,
 }
 EXPORT_SYMBOL(block_write_end);
 
-int generic_write_end(struct file *file, struct address_space *mapping,
-			loff_t pos, unsigned len, unsigned copied,
-			struct folio *folio, void *fsdata)
+int generic_write_end(const struct kiocb *iocb, struct address_space *mapping,
+		      loff_t pos, unsigned len, unsigned copied,
+		      struct folio *folio, void *fsdata)
 {
 	struct inode *inode = mapping->host;
 	loff_t old_size = inode->i_size;
 	bool i_size_changed = false;
 
-	copied = block_write_end(file, mapping, pos, len, copied, folio, fsdata);
+	copied = block_write_end(pos, len, copied, folio);
 
 	/*
 	 * No need to use i_size_read() here, the i_size cannot change under us
@@ -2361,7 +2355,7 @@ bool block_is_partially_uptodate(struct folio *folio, size_t from, size_t count)
 	if (!head)
 		return false;
 	blocksize = head->b_size;
-	to = min_t(unsigned, folio_size(folio) - from, count);
+	to = min(folio_size(folio) - from, count);
 	to = from + to;
 	if (from < blocksize && to > folio_size(folio) - blocksize)
 		return false;
@@ -2501,7 +2495,8 @@ out:
 }
 EXPORT_SYMBOL(generic_cont_expand_simple);
 
-static int cont_expand_zero(struct file *file, struct address_space *mapping,
+static int cont_expand_zero(const struct kiocb *iocb,
+			    struct address_space *mapping,
 			    loff_t pos, loff_t *bytes)
 {
 	struct inode *inode = mapping->host;
@@ -2525,12 +2520,12 @@ static int cont_expand_zero(struct file *file, struct address_space *mapping,
 		}
 		len = PAGE_SIZE - zerofrom;
 
-		err = aops->write_begin(file, mapping, curpos, len,
+		err = aops->write_begin(iocb, mapping, curpos, len,
 					    &folio, &fsdata);
 		if (err)
 			goto out;
 		folio_zero_range(folio, offset_in_folio(folio, curpos), len);
-		err = aops->write_end(file, mapping, curpos, len, len,
+		err = aops->write_end(iocb, mapping, curpos, len, len,
 						folio, fsdata);
 		if (err < 0)
 			goto out;
@@ -2558,12 +2553,12 @@ static int cont_expand_zero(struct file *file, struct address_space *mapping,
 		}
 		len = offset - zerofrom;
 
-		err = aops->write_begin(file, mapping, curpos, len,
+		err = aops->write_begin(iocb, mapping, curpos, len,
 					    &folio, &fsdata);
 		if (err)
 			goto out;
 		folio_zero_range(folio, offset_in_folio(folio, curpos), len);
-		err = aops->write_end(file, mapping, curpos, len, len,
+		err = aops->write_end(iocb, mapping, curpos, len, len,
 						folio, fsdata);
 		if (err < 0)
 			goto out;
@@ -2578,17 +2573,16 @@ out:
  * For moronic filesystems that do not allow holes in file.
  * We may have to extend the file.
  */
-int cont_write_begin(struct file *file, struct address_space *mapping,
-			loff_t pos, unsigned len,
-			struct folio **foliop, void **fsdata,
-			get_block_t *get_block, loff_t *bytes)
+int cont_write_begin(const struct kiocb *iocb, struct address_space *mapping,
+		     loff_t pos, unsigned len, struct folio **foliop,
+		     void **fsdata, get_block_t *get_block, loff_t *bytes)
 {
 	struct inode *inode = mapping->host;
 	unsigned int blocksize = i_blocksize(inode);
 	unsigned int zerofrom;
 	int err;
 
-	err = cont_expand_zero(file, mapping, pos, bytes);
+	err = cont_expand_zero(iocb, mapping, pos, bytes);
 	if (err)
 		return err;
 
@@ -2610,7 +2604,7 @@ EXPORT_SYMBOL(cont_write_begin);
  * holes and correct delalloc and unwritten extent mapping on filesystems that
  * support these features.
  *
- * We are not allowed to take the i_mutex here so we have to play games to
+ * We are not allowed to take the i_rwsem here so we have to play games to
  * protect against truncate races as the page could now be beyond EOF.  Because
  * truncate writes the inode size before removing pages, once we have the
  * page lock we can determine safely if the page is beyond EOF. If it is not
@@ -2739,7 +2733,7 @@ int block_write_full_folio(struct folio *folio, struct writeback_control *wbc,
 	loff_t i_size = i_size_read(inode);
 
 	/* Is the folio fully inside i_size? */
-	if (folio_pos(folio) + folio_size(folio) <= i_size)
+	if (folio_next_pos(folio) <= i_size)
 		return __block_write_full_folio(inode, folio, get_block, wbc);
 
 	/* Is the folio fully outside i_size? (truncate in progress) */
@@ -2828,7 +2822,7 @@ static void submit_bh_wbc(blk_opf_t opf, struct buffer_head *bh,
 		wbc_account_cgroup_owner(wbc, bh->b_folio, bh->b_size);
 	}
 
-	submit_bio(bio);
+	blk_crypto_submit_bio(bio);
 }
 
 void submit_bh(blk_opf_t opf, struct buffer_head *bh)
@@ -2954,6 +2948,10 @@ bool try_to_free_buffers(struct folio *folio)
 	BUG_ON(!folio_test_locked(folio));
 	if (folio_test_writeback(folio))
 		return false;
+
+	/* Misconfigured folio check */
+	if (WARN_ON_ONCE(!folio_buffers(folio)))
+		return true;
 
 	if (mapping == NULL) {		/* can this still happen? */
 		ret = drop_buffers(folio, &buffers_to_free);
