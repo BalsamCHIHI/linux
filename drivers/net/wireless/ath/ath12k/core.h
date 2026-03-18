@@ -788,13 +788,13 @@ struct ath12k_band_cap {
 	u32 phy_id;
 	u32 max_bw_supported;
 	u32 ht_cap_info;
-	u32 he_cap_info[2];
+	__le32 he_cap_info[2];
 	u32 he_mcs;
-	u32 he_cap_phy_info[PSOC_HOST_MAX_PHY_SIZE];
+	__le32 he_cap_phy_info[PSOC_HOST_MAX_PHY_SIZE];
 	struct ath12k_wmi_ppe_threshold_arg he_ppet;
 	u16 he_6ghz_capa;
-	u32 eht_cap_mac_info[WMI_MAX_EHTCAP_MAC_SIZE];
-	u32 eht_cap_phy_info[WMI_MAX_EHTCAP_PHY_SIZE];
+	__le32 eht_cap_mac_info[WMI_MAX_EHTCAP_MAC_SIZE];
+	__le32 eht_cap_phy_info[WMI_MAX_EHTCAP_PHY_SIZE];
 	u32 eht_mcs_20_only;
 	u32 eht_mcs_80;
 	u32 eht_mcs_160;
