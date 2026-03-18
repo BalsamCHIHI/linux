@@ -480,12 +480,11 @@ ath12k_pull_mac_phy_cap_svc_ready_ext(struct ath12k_wmi_pdev *wmi_handle,
 		cap_band->phy_id = le32_to_cpu(mac_caps->phy_id);
 		cap_band->max_bw_supported = le32_to_cpu(mac_caps->max_bw_supported_2g);
 		cap_band->ht_cap_info = le32_to_cpu(mac_caps->ht_cap_info_2g);
-		cap_band->he_cap_info[0] = le32_to_cpu(mac_caps->he_cap_info_2g);
-		cap_band->he_cap_info[1] = le32_to_cpu(mac_caps->he_cap_info_2g_ext);
+		cap_band->he_cap_info[0] = mac_caps->he_cap_info_2g;
+		cap_band->he_cap_info[1] = mac_caps->he_cap_info_2g_ext;
 		cap_band->he_mcs = le32_to_cpu(mac_caps->he_supp_mcs_2g);
-		for (i = 0; i < WMI_MAX_HECAP_PHY_SIZE; i++)
-			cap_band->he_cap_phy_info[i] =
-				le32_to_cpu(mac_caps->he_cap_phy_info_2g[i]);
+		memcpy(&cap_band->he_cap_phy_info, &mac_caps->he_cap_phy_info_2g,
+		       sizeof(u32) * WMI_MAX_HECAP_PHY_SIZE);
 
 		cap_band->he_ppet.numss_m1 = le32_to_cpu(mac_caps->he_ppet2g.numss_m1);
 		cap_band->he_ppet.ru_bit_mask = le32_to_cpu(mac_caps->he_ppet2g.ru_info);
@@ -501,12 +500,11 @@ ath12k_pull_mac_phy_cap_svc_ready_ext(struct ath12k_wmi_pdev *wmi_handle,
 		cap_band->max_bw_supported =
 			le32_to_cpu(mac_caps->max_bw_supported_5g);
 		cap_band->ht_cap_info = le32_to_cpu(mac_caps->ht_cap_info_5g);
-		cap_band->he_cap_info[0] = le32_to_cpu(mac_caps->he_cap_info_5g);
-		cap_band->he_cap_info[1] = le32_to_cpu(mac_caps->he_cap_info_5g_ext);
+		cap_band->he_cap_info[0] = mac_caps->he_cap_info_5g;
+		cap_band->he_cap_info[1] = mac_caps->he_cap_info_5g_ext;
 		cap_band->he_mcs = le32_to_cpu(mac_caps->he_supp_mcs_5g);
-		for (i = 0; i < WMI_MAX_HECAP_PHY_SIZE; i++)
-			cap_band->he_cap_phy_info[i] =
-				le32_to_cpu(mac_caps->he_cap_phy_info_5g[i]);
+		memcpy(&cap_band->he_cap_phy_info, &mac_caps->he_cap_phy_info_5g,
+		       sizeof(u32) * WMI_MAX_HECAP_PHY_SIZE);
 
 		cap_band->he_ppet.numss_m1 = le32_to_cpu(mac_caps->he_ppet5g.numss_m1);
 		cap_band->he_ppet.ru_bit_mask = le32_to_cpu(mac_caps->he_ppet5g.ru_info);
@@ -519,12 +517,11 @@ ath12k_pull_mac_phy_cap_svc_ready_ext(struct ath12k_wmi_pdev *wmi_handle,
 		cap_band->max_bw_supported =
 			le32_to_cpu(mac_caps->max_bw_supported_5g);
 		cap_band->ht_cap_info = le32_to_cpu(mac_caps->ht_cap_info_5g);
-		cap_band->he_cap_info[0] = le32_to_cpu(mac_caps->he_cap_info_5g);
-		cap_band->he_cap_info[1] = le32_to_cpu(mac_caps->he_cap_info_5g_ext);
+		cap_band->he_cap_info[0] = mac_caps->he_cap_info_5g;
+		cap_band->he_cap_info[1] = mac_caps->he_cap_info_5g_ext;
 		cap_band->he_mcs = le32_to_cpu(mac_caps->he_supp_mcs_5g);
-		for (i = 0; i < WMI_MAX_HECAP_PHY_SIZE; i++)
-			cap_band->he_cap_phy_info[i] =
-				le32_to_cpu(mac_caps->he_cap_phy_info_5g[i]);
+		memcpy(&cap_band->he_cap_phy_info, &mac_caps->he_cap_phy_info_5g,
+		       sizeof(u32) * WMI_MAX_HECAP_PHY_SIZE);
 
 		cap_band->he_ppet.numss_m1 = le32_to_cpu(mac_caps->he_ppet5g.numss_m1);
 		cap_band->he_ppet.ru_bit_mask = le32_to_cpu(mac_caps->he_ppet5g.ru_info);
@@ -2219,14 +2216,13 @@ int ath12k_wmi_send_peer_assoc_cmd(struct ath12k *ar,
 	cmd->peer_phymode = cpu_to_le32(arg->peer_phymode);
 
 	/* Update 11ax capabilities */
-	cmd->peer_he_cap_info = cpu_to_le32(arg->peer_he_cap_macinfo[0]);
-	cmd->peer_he_cap_info_ext = cpu_to_le32(arg->peer_he_cap_macinfo[1]);
+	cmd->peer_he_cap_info = arg->peer_he_cap_macinfo[0];
+	cmd->peer_he_cap_info_ext = arg->peer_he_cap_macinfo[1];
 	cmd->peer_he_cap_info_internal = cpu_to_le32(arg->peer_he_cap_macinfo_internal);
 	cmd->peer_he_caps_6ghz = cpu_to_le32(arg->peer_he_caps_6ghz);
 	cmd->peer_he_ops = cpu_to_le32(arg->peer_he_ops);
-	for (i = 0; i < WMI_MAX_HECAP_PHY_SIZE; i++)
-		cmd->peer_he_cap_phy[i] =
-			cpu_to_le32(arg->peer_he_cap_phyinfo[i]);
+	memcpy(cmd->peer_he_cap_phy, arg->peer_he_cap_phyinfo,
+	       sizeof(u32) * WMI_MAX_HECAP_PHY_SIZE);
 	cmd->peer_ppet.numss_m1 = cpu_to_le32(arg->peer_ppet.numss_m1);
 	cmd->peer_ppet.ru_info = cpu_to_le32(arg->peer_ppet.ru_bit_mask);
 	for (i = 0; i < WMI_MAX_NUM_SS; i++)
@@ -5030,17 +5026,17 @@ static void ath12k_wmi_eht_caps_parse(struct ath12k_pdev *pdev, u32 band,
 	u8 i;
 
 	if (band == NL80211_BAND_6GHZ)
-		support_320mhz = cap_band->eht_cap_phy_info[0] &
-					IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ;
+		support_320mhz = le32_to_cpu(cap_band->eht_cap_phy_info[0]) &
+				 IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ;
 
-	for (i = 0; i < WMI_MAX_EHTCAP_MAC_SIZE; i++)
-		cap_band->eht_cap_mac_info[i] = le32_to_cpu(cap_mac_info[i]);
+	memcpy(cap_band->eht_cap_mac_info, cap_mac_info,
+	       sizeof(u32) * WMI_MAX_EHTCAP_MAC_SIZE);
 
-	for (i = 0; i < WMI_MAX_EHTCAP_PHY_SIZE; i++)
-		cap_band->eht_cap_phy_info[i] = le32_to_cpu(cap_phy_info[i]);
+	memcpy(cap_band->eht_cap_phy_info, cap_phy_info,
+	       sizeof(u32) * WMI_MAX_EHTCAP_PHY_SIZE);
 
 	if (band == NL80211_BAND_6GHZ)
-		cap_band->eht_cap_phy_info[0] |= support_320mhz;
+		cap_band->eht_cap_phy_info[0] |= cpu_to_le32(support_320mhz);
 
 	cap_band->eht_mcs_20_only = le32_to_cpu(supp_mcs[0]);
 	cap_band->eht_mcs_80 = le32_to_cpu(supp_mcs[1]);
@@ -5128,10 +5124,12 @@ static int ath12k_wmi_tlv_mac_phy_caps_ext(struct ath12k_base *ab, u16 tag,
 
 	if (ab->hw_params->single_pdev_only) {
 		if (caps->hw_mode_id == WMI_HOST_HW_MODE_SINGLE) {
-			support_320mhz = le32_to_cpu(caps->eht_cap_phy_info_5ghz[0]) &
-					 IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ;
+			support_320mhz =
+				le32_to_cpu(caps->eht_cap_phy_info_5ghz[0]) &
+				IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ;
 			cap_band = &ab->pdevs[0].cap.band[NL80211_BAND_6GHZ];
-			cap_band->eht_cap_phy_info[0] |= support_320mhz;
+			cap_band->eht_cap_phy_info[0] |=
+				cpu_to_le32(support_320mhz);
 		}
 
 		if (ab->wmi_ab.preferred_hw_mode != le32_to_cpu(caps->hw_mode_id))

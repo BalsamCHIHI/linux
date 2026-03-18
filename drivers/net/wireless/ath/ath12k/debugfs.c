@@ -410,8 +410,8 @@ static bool ath12k_he_supports_extra_mcs(struct ath12k *ar, int freq)
 	else
 		cap_band = &cap->band[NL80211_BAND_6GHZ];
 
-	extra_mcs_supported = u32_get_bits(cap_band->he_cap_info[1],
-					   HE_EXTRA_MCS_SUPPORT);
+	extra_mcs_supported = le32_get_bits(cap_band->he_cap_info[1],
+					    HE_EXTRA_MCS_SUPPORT);
 	return extra_mcs_supported;
 }
 
